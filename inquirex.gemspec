@@ -10,13 +10,13 @@ Gem::Specification.new do |spec|
 
   spec.summary = "A declarative, rules-driven questionnaire engine for building conditionally-branching intake forms, qualification wizards, and surveys in pure Ruby."
   spec.description = "Inquirex lets you define multi-step questionnaires as directed graphs with conditional branching, using a conversational DSL (ask, say, mention) and an AST-based rule system (contains, equals, greater_than, all, any). The engine walks the graph, collects structured answers, and serializes everything to JSON — making it the ideal backbone for cross-platform intake forms where the frontend is a chat widget, a terminal, or a mobile app. Framework-agnostic, zero dependencies, thread-safe immutable definitions."
-  spec.homepage = "https://github.com/kigster/inquirex"
+  spec.homepage = "https://github.com/inquirex/inquirex"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 4.0.0"
   spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/kigster/inquirex"
-  spec.metadata["changelog_uri"] = "https://github.com/kigster/inquirex/blob/main/CHANGELOG.md"
+  spec.metadata["source_code_uri"] = "https://github.com/inquirex/inquirex"
+  spec.metadata["changelog_uri"] = "https://github.com/inquirex/inquirex/blob/main/CHANGELOG.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   # Specify which files should be added to the gem when it is released.
