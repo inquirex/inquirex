@@ -2,12 +2,12 @@ inherit_from:
   - .relaxed_rubocop.yml
 
 AllCops:
+  SuggestExtensions: false
   TargetRubyVersion: 4.0
   NewCops: enable
   Include:
     - '**/*.rb'
   Exclude:
-    - 'spec/**/*'
     - "bin/**/*"
 
 
@@ -90,4 +90,10 @@ Style/OptionalBooleanParameter:
   Enabled: false
 
 Naming/PredicateMethod:
+  Enabled: false
+
+RSpec/MultipleExpectations:
+  Enabled: false
+
+Style/SingleArgumentDig:
   Enabled: false

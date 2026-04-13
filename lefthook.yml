@@ -6,7 +6,7 @@ pre-commit:
   parallel: true
   jobs:
     - name: lint
-      run: bundle exec rubocop {staged_files}
+      run: bundle exec rubocop -c .rubocop.yml {staged_files}
       glob: "*.{rb,Gemfile}"
       stage_fixed: true
 

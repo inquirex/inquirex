@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Inquirex::Definition do
-  let(:definition) do
+  subject(:definition) do
     Inquirex.define id: "tax-2025", version: "2.0.0" do
       meta title: "Tax Intake", subtitle: "Quick and painless", brand: { name: "Acme", color: "#2563eb" }
       start :filing_status
@@ -52,14 +52,14 @@ RSpec.describe Inquirex::Definition do
 
   describe "JSON round-trip" do
     let(:json) { definition.to_json }
-    let(:restored) { Inquirex::Definition.from_json(json) }
+    let(:restored) { described_class.from_json(json) }
 
     it "produces valid JSON" do
       expect { JSON.parse(json) }.not_to raise_error
     end
 
-    its(:to_json) { is_expected.to include('"id":"tax-2025"') }
-    its(:to_json) { is_expected.to include('"start":"filing_status"') }
+    it { expect(json).to include('"id":"tax-2025"') }
+    it { expect(json).to include('"start":"filing_status"') }
 
     it "restores id and version" do
       expect(restored.id).to eq("tax-2025")

@@ -14,6 +14,8 @@ install:
 lint-fix *args:
     {{rbenv}} && bundle exec rubocop -a
 
+alias format := lint-fix
+
 # Lint and reformat files
 lint:
     {{rbenv}} && bundle exec rubocop

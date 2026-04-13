@@ -7,7 +7,7 @@ RSpec.describe Inquirex do
 
   describe ".define" do
     subject(:definition) do
-      Inquirex.define id: "test-flow", version: "1.0.0" do
+      described_class.define id: "test-flow", version: "1.0.0" do
         meta title: "Test Flow", subtitle: "A simple test"
         start :greeting
 
@@ -72,7 +72,7 @@ RSpec.describe Inquirex do
   describe ".define — error cases" do
     it "raises DefinitionError when no start step is set" do
       expect do
-        Inquirex.define do
+        described_class.define do
           ask :name do
             type :string
             question "Name?"
@@ -83,7 +83,7 @@ RSpec.describe Inquirex do
 
     it "raises DefinitionError when no steps are defined" do
       expect do
-        Inquirex.define do
+        described_class.define do
           start :name
         end
       end.to raise_error(Inquirex::Errors::DefinitionError, /No steps defined/)
@@ -91,7 +91,7 @@ RSpec.describe Inquirex do
 
     it "raises DefinitionError when start references unknown step" do
       expect do
-        Inquirex.define do
+        described_class.define do
           start :missing
           ask :name do
             type :string
