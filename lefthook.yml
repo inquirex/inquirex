@@ -1,0 +1,35 @@
+output:
+  - summary
+  - failure
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: lint
+      run: bundle exec rubocop {staged_files}
+      glob: "*.{rb,Gemfile}"
+      stage_fixed: true
+
+    - name: check for conflict markers and whitespace issues
+      run: git --no-pager diff --check
+
+    # If tests take >1 second, move this (or just the long-running tests) to pre-push.
+    - name: run tests
+      run: just test
+
+    - name: fix rubocop formatting issues
+      run: bundle exec rubocop -a {staged_files}
+      glob: "*.{rb,Gemfile,gemspec}"
+      stage_fixed: true
+
+    - name: spell check
+      run: codespell {staged_files}
+      glob: "*.{rb,md,gemspec}"
+
+    - name: format markdown
+      run: mdformat {staged_files}
+      glob: "*.md"
+      stage_fixed: true
+
+    - name: scan for secrets
+      run: detect-secrets-hook --baseline .secrets.baseline

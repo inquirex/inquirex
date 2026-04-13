@@ -1,0 +1,93 @@
+inherit_from: 
+  - .relaxed_rubocop.yml
+
+AllCops:
+  TargetRubyVersion: 4.0
+  NewCops: enable
+  Include:
+    - '**/*.rb'
+  Exclude:
+    - 'spec/**/*'
+    - "bin/**/*"
+
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+plugins:
+  - rubocop-rspec
+
+Layout/LineLength:
+  Max: 120
+
+Metrics/MethodLength:
+  Max: 50
+
+Metrics/ClassLength:
+  Max: 100
+
+# --- Alignment Rules (your main obsession) ---
+
+Layout/ArgumentAlignment:
+  EnforcedStyle: with_fixed_indentation
+
+Layout/HashAlignment:
+  EnforcedColonStyle: table
+  EnforcedHashRocketStyle: table
+
+Layout/MultilineMethodArgumentLineBreaks:
+  Enabled: true
+
+Layout/FirstArgumentIndentation:
+  EnforcedStyle: consistent
+
+Layout/ParameterAlignment:
+  EnforcedStyle: with_fixed_indentation
+
+Layout/ExtraSpacing:
+  AllowForAlignment: true
+
+# --- Hash formatting (this is where the magic mostly happens) ---
+
+Layout/SpaceAroundOperators:
+  Enabled: true
+
+Layout/SpaceBeforeFirstArg:
+  Enabled: true
+
+# --- RSpec configuration ---
+
+RSpec:
+  Enabled: true
+
+# RSpec/Its:
+#   Enabled: true
+
+# Allow rspec-its style:
+RSpec/DescribeClass:
+  Enabled: false
+
+# This prevents RuboCop from whining about one-liners
+RSpec/ExampleLength:
+  Max: 20
+
+# --- Relaxed rules (because life is short) ---
+
+Style/Documentation:
+  Enabled: false
+
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+Metrics/BlockLength:
+  Exclude:
+    - "spec/**/*"
+
+Style/OptionalBooleanParameter:
+  Enabled: false
+
+Naming/PredicateMethod:
+  Enabled: false
