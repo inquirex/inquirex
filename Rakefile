@@ -2,11 +2,35 @@
 
 require "bundler/gem_tasks"
 require "rspec/core/rake_task"
+require "timeout"
+require "yard"
+
+def shell(*args)
+  puts "running: #{args.join(" ")}"
+  system(args.join(" "))
+end
+
+task :clean do
+  shell("rm -rf pkg/ tmp/ coverage/ doc/ ")
+end
+
+task gem: [:build] do
+  shell("gem install pkg/*")
+end
+
+task permissions: [:clean] do
+  shell("chmod -v o+r,g+r * */* */*/* */*/*/* */*/*/*/* */*/*/*/*/*")
+  shell("find . -type d -exec chmod o+x,g+x {} \\;")
+end
+
+task build: :permissions
+
+YARD::Rake::YardocTask.new(:doc) do |t|
+  t.files = %w[lib/**/*.rb exe/*.rb - README.md LICENSE.txt CHANGELOG.md]
+  t.options.unshift("--title", '"FlowEngine — DSL + AST for buildiong complex flows in Ruby."')
+  t.after = -> { exec("open doc/index.html") } if RUBY_PLATFORM =~ /darwin/
+end
 
 RSpec::Core::RakeTask.new(:spec)
 
-require "rubocop/rake_task"
-
-RuboCop::RakeTask.new
-
-task default: %i[spec rubocop]
+task default: :spec
