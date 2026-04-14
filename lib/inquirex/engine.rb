@@ -74,6 +74,33 @@ module Inquirex
       advance_step
     end
 
+    # Merges a hash of { step_id => value } into the top-level answers without
+    # clobbering answers the user has already provided. Used by LLM clarify
+    # steps to populate downstream answers from free-text extraction so that
+    # `skip_if not_empty(:id)` rules on later steps will fire.
+    #
+    # Nil/empty values in the hash are ignored so that "unknown" LLM outputs
+    # don't spuriously satisfy `not_empty` rules.
+    #
+    # If the engine's current step becomes skippable as a result of the prefill,
+    # it auto-advances past it.
+    #
+    # @param hash [Hash] answers keyed by step id
+    # @return [Hash] the updated answers
+    def prefill!(hash)
+      return @answers unless hash.is_a?(Hash)
+
+      hash.each do |key, value|
+        next if value.nil?
+        next if value.respond_to?(:empty?) && value.empty?
+
+        sym = key.to_sym
+        @answers[sym] = value unless @answers.key?(sym)
+      end
+      skip_if_needed unless finished?
+      @answers
+    end
+
     # Serializable state snapshot for persistence or resumption.
     #
     # @return [Hash]
