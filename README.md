@@ -9,6 +9,7 @@ It is the core gem in the Inquirex ecosystem and focuses on:
 - A conversational DSL (`ask`, `say`, `header`, `btw`, `warning`, `confirm`)
 - A serializable AST rule system (`contains`, `equals`, `greater_than`, `less_than`, `not_empty`, `all`, `any`)
 - Framework-agnostic widget rendering hints (`widget` DSL verb, `WidgetHint`, `WidgetRegistry`)
+- Named **accumulators** for running totals (pricing, complexity scoring, credit scoring, lead qualification)
 - An immutable flow definition graph
 - A runtime engine for stateful step traversal
 - JSON round-trip serialization for cross-platform clients
@@ -18,8 +19,8 @@ It is the core gem in the Inquirex ecosystem and focuses on:
 
 - Version: `0.2.0`
 - Ruby: `>= 4.0.0` (project currently uses `4.0.2`)
-- Test suite: `183 examples, 0 failures`
-- Coverage: ~`93%` line coverage
+- Test suite: `220 examples, 0 failures`
+- Coverage: ~`94%` line coverage
 
 ## Why Inquirex
 
@@ -103,7 +104,8 @@ engine.finished? # => true
 ### Flow-level methods
 
 - `start :step_id` sets the entry step
-- `meta title:, subtitle:, brand:` adds optional frontend metadata
+- `meta title:, subtitle:, brand:, theme:` adds optional frontend metadata (see [Theme](#theme-and-branding))
+- `accumulator :name, type:, default:` declares a running total (see [Accumulators](#accumulators))
 
 ### Step verbs
 
@@ -134,6 +136,8 @@ engine.finished? # => true
 - `transition to: :next_step, if_rule: rule, requires_server: false`
 - `compute { |answers| ... }` (accepted by the DSL as a server-side hook; currently omitted from runtime JSON)
 - `widget target: :desktop, type: :radio_group, columns: 2` (rendering hint for frontend adapters)
+- `accumulate :name, lookup:|per_selection:|per_unit:|flat:` (contribution to a named running total; see [Accumulators](#accumulators))
+- `price ...` (sugar for `accumulate :price, ...`)
 
 ## Widget Rendering Hints
 
@@ -186,6 +190,158 @@ step.effective_widget_hint_for(target: :desktop)   # explicit hint or registry d
 
 > **Note:** Widget hints were previously in a separate `inquirex-ui` gem. As of v0.2.0 they are part of core, since every frontend adapter needs them.
 
+## Accumulators
+
+Accumulators are **named running totals** that a flow maintains as the user answers questions. The canonical use case is **pricing** — totalling the cost of a tax return, a SaaS quote, or an insurance premium — but the same primitive generalizes to **complexity scoring**, **credit scoring**, **lead qualification scores**, **risk scores**, or any other numeric tally.
+
+Like rules, accumulator declarations are **pure data**. They serialize to JSON and evaluate identically on the Ruby server and in the JS widget — no lambdas, no server round-trips.
+
+### Declaring accumulators
+
+Each flow declares one or more accumulators with a name, a type, and a starting value:
+
+```ruby
+Inquirex.define id: "tax-pricing-2025" do
+  accumulator :price,      type: :currency, default: 0
+  accumulator :complexity, type: :integer,  default: 0
+  # ...
+end
+```
+
+### Contributing to an accumulator from a step
+
+Use the `accumulate` verb inside any `ask`/`confirm` step. Exactly one **shape** key must be provided:
+
+| Shape | Fits | Semantics |
+|-------|------|-----------|
+| `lookup: { ... }` | `:enum` | Adds the amount mapped to the chosen option value |
+| `per_selection: { ... }` | `:multi_enum` | Sums the amounts for every selected option |
+| `per_unit: N` | `:integer`, `:decimal` | Multiplies the numeric answer by `N` |
+| `flat: N` | any type | Adds `N` when the step has a truthy, non-empty answer |
+
+```ruby
+ask :filing_status do
+  type :enum
+  question "Filing status?"
+  options single: "Single", mfj: "Married Filing Jointly", hoh: "Head of Household"
+  accumulate :price,      lookup: { single: 200, mfj: 400, hoh: 300 }
+  accumulate :complexity, lookup: { mfj: 1 }
+  transition to: :dependents
+end
+
+ask :dependents do
+  type :integer
+  question "How many dependents?"
+  default 0
+  accumulate :price, per_unit: 25          # $25 per dependent
+  transition to: :schedules
+end
+
+ask :schedules do
+  type :multi_enum
+  question "Which schedules apply?"
+  options c: "Schedule C (Business)",
+    e: "Schedule E (Rental)",
+    d: "Schedule D (Capital Gains)"
+  accumulate :price,      per_selection: { c: 150, e: 75, d: 50 }
+  accumulate :complexity, per_selection: { c: 2, e: 1, d: 1 }
+  transition to: :done
+end
+```
+
+A single step can contribute to any number of accumulators.
+
+### The `price` sugar
+
+Since `:price` is the most common use case (lead qualification, tax prep, SaaS quotes), there's a one-liner:
+
+```ruby
+price single: 200, mfj: 400, hoh: 300   # => accumulate :price, lookup: { ... }
+price per_unit: 25                       # => accumulate :price, per_unit: 25
+price per_selection: { c: 150, e: 75 }   # => accumulate :price, per_selection: { ... }
+```
+
+If you pass a plain option-value → amount hash (no shape key), `price` treats it as a `lookup`.
+
+### Reading totals at runtime
+
+The engine maintains running totals as each answer comes in:
+
+```ruby
+engine = Inquirex::Engine.new(definition)
+engine.answer("mfj")     # filing_status: +$400, +1 complexity
+engine.answer(3)         # dependents:    +$75
+engine.answer(%w[c e])   # schedules:     +$225, +3 complexity
+
+engine.total(:price)      # => 700.0
+engine.total(:complexity) # => 4
+engine.totals             # => { price: 700.0, complexity: 4 }
+```
+
+`#to_state` includes `totals:` so persisted sessions resume with the correct running total.
+
+### JSON wire format
+
+Accumulators serialize predictably, keeping the contract with `inquirex-js` explicit:
+
+```json
+{
+  "accumulators": {
+    "price":      { "type": "currency", "default": 0 },
+    "complexity": { "type": "integer",  "default": 0 }
+  },
+  "steps": {
+    "filing_status": {
+      "verb": "ask",
+      "type": "enum",
+      "accumulate": {
+        "price":      { "lookup": { "single": 200, "mfj": 400, "hoh": 300 } },
+        "complexity": { "lookup": { "mfj": 1 } }
+      }
+    },
+    "dependents": {
+      "verb": "ask",
+      "type": "integer",
+      "accumulate": { "price": { "per_unit": 25 } }
+    },
+    "schedules": {
+      "verb": "ask",
+      "type": "multi_enum",
+      "accumulate": {
+        "price":      { "per_selection": { "c": 150, "e": 75, "d": 50 } },
+        "complexity": { "per_selection": { "c": 2, "e": 1, "d": 1 } }
+      }
+    }
+  }
+}
+```
+
+The `inquirex-js` widget reads this verbatim and reproduces the same totals client-side.
+
+## Theme and Branding
+
+The flow's `meta` hash carries optional branding and theme overrides for the JS widget. Identity (name, logo) goes in `brand:`; colors, fonts, and radii go in `theme:`.
+
+```ruby
+meta title: "Tax Preparation Intake",
+  subtitle: "Let's understand your situation",
+  brand: { name: "Agentica", logo: "https://cdn.example.com/logo.png" },
+  theme: {
+    brand:       "#2563eb",
+    on_brand:    "#ffffff",
+    background:  "#0b1020",
+    surface:     "#111827",
+    text:        "#f9fafb",
+    text_muted:  "#94a3b8",
+    border:      "#1f2937",
+    radius:      "18px",
+    font:        "Inter, system-ui, sans-serif",
+    header_font: "Inter, system-ui, sans-serif"
+  }
+```
+
+Snake-case keys (`on_brand`, `text_muted`, `header_font`) are idiomatic Ruby; they're automatically translated to the camelCase names (`onBrand`, `textMuted`, `headerFont`) the JS widget expects on the wire. Each theme key maps 1:1 to a CSS custom property on the widget's shadow root.
+
 ## Rule System (AST, JSON-serializable)
 
 Rule helpers available in DSL blocks:
@@ -216,13 +372,15 @@ transition to: :complex_path,
 - `current_step`
 - `answers` (raw hash)
 - `history` (visited step IDs)
+- `totals` (running totals per accumulator — see [Accumulators](#accumulators))
 
 Behavior:
 
 - Use `answer(value)` on collecting steps
 - Use `advance` on display steps
 - Use `finished?` to detect completion
-- Use `to_state` / `.from_state` for persistence/resume
+- Use `total(:price)` / `totals` to read running totals
+- Use `to_state` / `.from_state` for persistence/resume (totals included)
 
 ### Validation Adapter
 
@@ -249,14 +407,18 @@ restored = Inquirex::Definition.from_json(json)
 Serialized structure includes:
 
 - Flow metadata (`id`, `version`, `meta`, `start`)
+- Branding and theme (`meta.brand`, `meta.theme`)
+- Accumulator declarations (`accumulators`) and per-step contributions (`accumulate`)
 - Steps and transitions
 - Rule AST payloads
+- Widget hints
 
 Important serialization details:
 
-- Rule objects serialize and deserialize cleanly
+- Rule objects and accumulator shapes serialize and deserialize cleanly
 - Proc/lambda defaults are stripped from JSON
 - `requires_server: true` transition flag is preserved
+- Snake-case theme keys are converted to camelCase on serialization to match the JS widget contract
 
 ## Answers Wrapper
 

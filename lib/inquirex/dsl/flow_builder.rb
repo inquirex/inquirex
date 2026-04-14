@@ -15,6 +15,19 @@ module Inquirex
         @start_step_id = nil
         @nodes = {}
         @meta = {}
+        @accumulators = {}
+      end
+
+      # Declares a named running total the flow accumulates into as answers come in.
+      # The `:price` accumulator is the common lead-qualification use case; others
+      # (e.g. :complexity, :credit_score) work identically.
+      #
+      # @param name [Symbol] e.g. :price
+      # @param type [Symbol] one of Node::TYPES (default :currency-ish: :decimal)
+      # @param default [Numeric] starting value (default: 0)
+      def accumulator(name, type: :decimal, default: 0)
+        sym = name.to_sym
+        @accumulators[sym] = Accumulator.new(name: sym, type:, default:)
       end
 
       # Sets the entry step id for the flow.
@@ -24,15 +37,28 @@ module Inquirex
         @start_step_id = step_id
       end
 
-      # Sets frontend metadata: title, subtitle, and brand information.
+      # Sets frontend metadata: title, subtitle, brand, and theme.
       #
       # @param title [String, nil]
       # @param subtitle [String, nil]
-      # @param brand [Hash, nil] e.g. { name: "Acme", color: "#2563eb" }
-      def meta(title: nil, subtitle: nil, brand: nil)
+      # @param brand [Hash, nil] identity — `{ name: "Acme", logo: "https://..." }`.
+      #   Colors and fonts belong in `theme:`, not here.
+      # @param theme [Hash, nil] visual overrides consumed by the JS widget.
+      #   Every key maps 1:1 to a CSS custom property on the widget's shadow root.
+      #   Supported keys: :brand, :on_brand (or :onBrand), :background, :surface,
+      #   :text, :text_muted (or :textMuted), :border, :radius, :font,
+      #   :header_font (or :headerFont).
+      #
+      # @example
+      #   meta title: "Tax Intake",
+      #     subtitle: "Let's get started",
+      #     brand: { name: "Agentica", logo: "https://cdn.example.com/logo.png" },
+      #     theme: { brand: "#2563eb", radius: "18px", font: "Inter, system-ui" }
+      def meta(title: nil, subtitle: nil, brand: nil, theme: nil)
         @meta[:title] = title if title
         @meta[:subtitle] = subtitle if subtitle
         @meta[:brand] = brand if brand
+        @meta[:theme] = normalize_theme(theme) if theme
       end
 
       # Defines a question step that collects typed input from the user.
@@ -91,11 +117,27 @@ module Inquirex
           nodes:         @nodes,
           id:            @flow_id,
           version:       @flow_version,
-          meta:          @meta
+          meta:          @meta,
+          accumulators:  @accumulators
         )
       end
 
+      # Maps snake_case theme keys (idiomatic in Ruby) to the camelCase names
+      # the JS widget (inquirex-js ThemeOverrides) expects on the wire.
+      THEME_KEY_ALIASES = {
+        on_brand:    :onBrand,
+        text_muted:  :textMuted,
+        header_font: :headerFont
+      }.freeze
+
       private
+
+      def normalize_theme(theme)
+        theme.each_with_object({}) do |(key, value), acc|
+          sym = key.to_sym
+          acc[THEME_KEY_ALIASES.fetch(sym, sym)] = value
+        end
+      end
 
       def add_step(id, verb, &block)
         builder = StepBuilder.new(verb)

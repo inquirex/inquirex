@@ -46,7 +46,8 @@ module Inquirex
       :transitions,
       :skip_if,
       :default,
-      :widget_hints
+      :widget_hints,
+      :accumulations
 
     def initialize(id:,
       verb:,
@@ -57,7 +58,8 @@ module Inquirex
       transitions: [],
       skip_if: nil,
       default: nil,
-      widget_hints: nil)
+      widget_hints: nil,
+      accumulations: [])
       @id = id.to_sym
       @verb = verb.to_sym
       @type = type&.to_sym
@@ -67,6 +69,7 @@ module Inquirex
       @skip_if = skip_if
       @default = default
       @widget_hints = widget_hints&.freeze
+      @accumulations = accumulations.freeze
       extract_options(options)
       freeze
     end
@@ -141,6 +144,12 @@ module Inquirex
                                       .transform_values(&:to_h)
       end
 
+      unless @accumulations.empty?
+        hash["accumulate"] = @accumulations.to_h do |acc|
+          [acc.target.to_s, acc.to_h]
+        end
+      end
+
       hash
     end
 
@@ -159,11 +168,13 @@ module Inquirex
       skip_if_data = hash["skip_if"] || hash[:skip_if]
       default = hash["default"] || hash[:default]
       widget_data = hash["widget"] || hash[:widget]
+      accumulate_data = hash["accumulate"] || hash[:accumulate]
 
       transitions = transitions_data.map { |t| Transition.from_h(t) }
       skip_if = skip_if_data ? Rules::Base.from_h(skip_if_data) : nil
       options = deserialize_options(raw_options)
       widget_hints = deserialize_widget_hints(widget_data)
+      accumulations = deserialize_accumulations(accumulate_data)
 
       new(
         id:,
@@ -175,7 +186,8 @@ module Inquirex
         transitions:,
         skip_if:,
         default:,
-        widget_hints:
+        widget_hints:,
+        accumulations:
       )
     end
 
@@ -216,6 +228,13 @@ module Inquirex
       raw.to_h { |o| [(o["value"] || o[:value]).to_s, (o["label"] || o[:label]).to_s] }
     end
     private_class_method :deserialize_options
+
+    def self.deserialize_accumulations(data)
+      return [] unless data.is_a?(Hash)
+
+      data.map { |target, entry| Accumulation.from_h(target.to_sym, entry) }
+    end
+    private_class_method :deserialize_accumulations
 
     def self.deserialize_widget_hints(widget_data)
       return nil unless widget_data.is_a?(Hash) && widget_data.any? { |_, v| v.is_a?(Hash) }

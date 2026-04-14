@@ -13,20 +13,22 @@ module Inquirex
   # @attr_reader start_step_id [Symbol] id of the first step in the flow
   # @attr_reader steps [Hash<Symbol, Node>] frozen map of step id => node
   class Definition
-    attr_reader :id, :version, :meta, :start_step_id, :steps
+    attr_reader :id, :version, :meta, :start_step_id, :steps, :accumulators
 
     # @param start_step_id [Symbol] id of the initial step
     # @param nodes [Hash<Symbol, Node>] all steps keyed by id
     # @param id [String, nil] flow identifier
     # @param version [String] semver
     # @param meta [Hash] frontend metadata
+    # @param accumulators [Hash<Symbol, Accumulator>] named running totals
     # @raise [Errors::DefinitionError] if start_step_id is not present in nodes
-    def initialize(start_step_id:, nodes:, id: nil, version: "1.0.0", meta: {})
+    def initialize(start_step_id:, nodes:, id: nil, version: "1.0.0", meta: {}, accumulators: {})
       @id = id
       @version = version
       @meta = meta.freeze
       @start_step_id = start_step_id.to_sym
       @steps = nodes.freeze
+      @accumulators = accumulators.freeze
       validate!
       freeze
     end
@@ -65,6 +67,11 @@ module Inquirex
       hash["version"] = @version
       hash["meta"] = @meta unless @meta.empty?
       hash["start"] = @start_step_id.to_s
+      unless @accumulators.empty?
+        hash["accumulators"] = @accumulators.each_with_object({}) do |(name, acc), h|
+          h[name.to_s] = acc.to_h
+        end
+      end
       hash["steps"] = @steps.transform_keys(&:to_s).transform_values(&:to_h)
       hash
     end
@@ -89,13 +96,19 @@ module Inquirex
       meta = hash["meta"] || hash[:meta] || {}
       start = hash["start"] || hash[:start]
       steps_data = hash["steps"] || hash[:steps] || {}
+      acc_data = hash["accumulators"] || hash[:accumulators] || {}
 
       nodes = steps_data.each_with_object({}) do |(step_id, step_hash), acc|
         sym_id = step_id.to_sym
         acc[sym_id] = Node.from_h(sym_id, step_hash)
       end
 
-      new(start_step_id: start, nodes:, id:, version:, meta:)
+      accumulators = acc_data.each_with_object({}) do |(name, entry), h|
+        sym = name.to_sym
+        h[sym] = Accumulator.from_h(sym, entry)
+      end
+
+      new(start_step_id: start, nodes:, id:, version:, meta:, accumulators:)
     end
 
     private

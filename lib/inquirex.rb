@@ -20,6 +20,7 @@ require_relative "inquirex/widget_registry"
 # Core graph objects
 require_relative "inquirex/transition"
 require_relative "inquirex/evaluator"
+require_relative "inquirex/accumulator"
 require_relative "inquirex/node"
 require_relative "inquirex/definition"
 require_relative "inquirex/answers"
