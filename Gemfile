@@ -13,6 +13,7 @@ gem "rspec-its", "~> 2"
 
 gem "rubocop", "~> 1.21"
 gem "rubocop-rspec", "~> 3.9"
+gem "coverage-badge"
 gem "simplecov", "~> 0.22"
 
 gem "yard"

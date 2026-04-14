@@ -1,9 +1,24 @@
 # frozen_string_literal: true
 
 require "simplecov"
+require "coverage/badge"
 
 SimpleCov.start do
   add_filter "/spec/"
+  self.formatters = SimpleCov::Formatter::MultiFormatter.new(
+    [
+      SimpleCov::Formatter::HTMLFormatter,
+      Coverage::Badge::Formatter
+    ]
+  )
+end
+
+SimpleCov.at_exit do
+  SimpleCov.result.format!
+  # rubocop: disable RSpec/Output
+  puts "Coverage: #{SimpleCov.result.covered_percent.round(2)}%"
+  # rubocop: enable RSpec/Output
+  FileUtils.mv("coverage/badge.svg", "docs/badges/coverage_badge.svg")
 end
 
 require "inquirex"
