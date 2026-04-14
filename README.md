@@ -8,6 +8,7 @@ It is the core gem in the Inquirex ecosystem and focuses on:
 
 - A conversational DSL (`ask`, `say`, `header`, `btw`, `warning`, `confirm`)
 - A serializable AST rule system (`contains`, `equals`, `greater_than`, `less_than`, `not_empty`, `all`, `any`)
+- Framework-agnostic widget rendering hints (`widget` DSL verb, `WidgetHint`, `WidgetRegistry`)
 - An immutable flow definition graph
 - A runtime engine for stateful step traversal
 - JSON round-trip serialization for cross-platform clients
@@ -15,10 +16,10 @@ It is the core gem in the Inquirex ecosystem and focuses on:
 
 ## Status
 
-- Version: `0.1.0`
+- Version: `0.2.0`
 - Ruby: `>= 4.0.0` (project currently uses `4.0.2`)
-- Test suite: `109 examples, 0 failures`
-- Coverage: ~`92.5%` line coverage
+- Test suite: `183 examples, 0 failures`
+- Coverage: ~`93%` line coverage
 
 ## Why Inquirex
 
@@ -58,6 +59,8 @@ definition = Inquirex.define id: "tax-intake-2025", version: "1.0.0" do
     type :enum
     question "What is your filing status?"
     options single: "Single", married_jointly: "Married Filing Jointly"
+    widget target: :desktop, type: :radio_group, columns: 2
+    widget target: :mobile,  type: :dropdown
     transition to: :dependents
   end
 
@@ -130,6 +133,58 @@ engine.finished? # => true
 - `skip_if rule`
 - `transition to: :next_step, if_rule: rule, requires_server: false`
 - `compute { |answers| ... }` (accepted by the DSL as a server-side hook; currently omitted from runtime JSON)
+- `widget target: :desktop, type: :radio_group, columns: 2` (rendering hint for frontend adapters)
+
+## Widget Rendering Hints
+
+Every collecting step can carry framework-agnostic rendering hints via the `widget` DSL verb. Frontend adapters (JS widget, TTY, Rails) use these to pick the right UI control.
+
+```ruby
+ask :priority do
+  type :enum
+  question "How urgent is this?"
+  options low: "Low", medium: "Medium", high: "High"
+  widget target: :desktop, type: :radio_group, columns: 3
+  widget target: :mobile,  type: :dropdown
+  widget target: :tty,     type: :select
+  transition to: :next_step
+end
+```
+
+When no explicit `widget` is set, `WidgetRegistry` fills in sensible defaults per data type:
+
+| Data Type | Desktop | Mobile | TTY |
+|-----------|---------|--------|-----|
+| `:enum` | `radio_group` | `dropdown` | `select` |
+| `:multi_enum` | `checkbox_group` | `checkbox_group` | `multi_select` |
+| `:boolean` | `toggle` | `yes_no_buttons` | `yes_no` |
+| `:string` | `text_input` | `text_input` | `text_input` |
+| `:text` | `textarea` | `textarea` | `multiline` |
+| `:integer` | `number_input` | `number_input` | `number_input` |
+| `:currency` | `currency_input` | `currency_input` | `number_input` |
+| `:date` | `date_picker` | `date_picker` | `text_input` |
+
+Display verbs (`say`, `header`, `btw`, `warning`) have no widget hints.
+
+Widget hints are included in JSON serialization under a `"widget"` key, keyed by target:
+
+```json
+"widget": {
+  "desktop": { "type": "radio_group", "columns": 3 },
+  "mobile":  { "type": "dropdown" },
+  "tty":     { "type": "select" }
+}
+```
+
+### Accessing Hints at Runtime
+
+```ruby
+step = definition.step(:priority)
+step.widget_hint_for(target: :desktop)            # explicit hint or nil
+step.effective_widget_hint_for(target: :desktop)   # explicit hint or registry default
+```
+
+> **Note:** Widget hints were previously in a separate `inquirex-ui` gem. As of v0.2.0 they are part of core, since every frontend adapter needs them.
 
 ## Rule System (AST, JSON-serializable)
 
@@ -276,15 +331,27 @@ just lint-fix
 just ci
 ```
 
-## Roadmap Context
+## Extension Gems
 
-This repository is the core runtime (`inquirex`). The full ecosystem roadmap includes:
+The core gem is designed to be extended by optional gems that inject new DSL verbs at `require` time:
 
-- `inquirex-ui` for rendering metadata
-- `inquirex-tty` for terminal interaction
-- `inquirex-js` for embeddable web widget runtime
-- `inquirex-llm` for server-side LLM verbs
-- `inquirex-rails` for persistence/API integration
+```ruby
+require "inquirex"       # core DSL, rules, engine, widget hints
+require "inquirex-llm"   # adds: clarify, describe, summarize, detour
+
+Inquirex.define do       # one entry point, all verbs available
+  # ...
+end
+```
+
+### Ecosystem
+
+- **`inquirex-llm`** -- LLM-powered verbs (`clarify`, `describe`, `summarize`, `detour`) for server-side AI processing
+- **`inquirex-tty`** -- terminal adapter using TTY Toolkit
+- **`inquirex-js`** -- embeddable browser widget (chat-style)
+- **`inquirex-rails`** -- Rails Engine for persistence, API, and asset serving
+
+> **Note:** `inquirex-ui` has been merged into core as of v0.2.0. Widget hints (`widget` DSL verb, `WidgetHint`, `WidgetRegistry`) are now built in.
 
 ## License
 

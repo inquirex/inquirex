@@ -13,6 +13,10 @@ require_relative "inquirex/rules/not_empty"
 require_relative "inquirex/rules/all"
 require_relative "inquirex/rules/any"
 
+# Widget hints
+require_relative "inquirex/widget_hint"
+require_relative "inquirex/widget_registry"
+
 # Core graph objects
 require_relative "inquirex/transition"
 require_relative "inquirex/evaluator"

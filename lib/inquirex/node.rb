@@ -23,6 +23,7 @@ module Inquirex
   # @attr_reader transitions [Array<Transition>] ordered conditional next-step edges
   # @attr_reader skip_if [Rules::Base, nil] rule to skip this step entirely
   # @attr_reader default [Object, nil] default value (pre-fill, user can change)
+  # @attr_reader widget_hints [Hash{Symbol => WidgetHint}, nil] rendering hints per target
   class Node
     # Valid DSL verbs and which ones collect input from the user.
     VERBS = %i[ask say header btw warning confirm].freeze
@@ -44,7 +45,8 @@ module Inquirex
       :option_labels,
       :transitions,
       :skip_if,
-      :default
+      :default,
+      :widget_hints
 
     def initialize(id:,
       verb:,
@@ -54,7 +56,8 @@ module Inquirex
       options: nil,
       transitions: [],
       skip_if: nil,
-      default: nil)
+      default: nil,
+      widget_hints: nil)
       @id = id.to_sym
       @verb = verb.to_sym
       @type = type&.to_sym
@@ -63,10 +66,10 @@ module Inquirex
       @transitions = transitions.freeze
       @skip_if = skip_if
       @default = default
+      @widget_hints = widget_hints&.freeze
       extract_options(options)
       freeze
     end
-    # rubocop:enable Metrics/ParameterLists
 
     # @return [Boolean] true if this step collects input from the user
     def collecting?
@@ -76,6 +79,23 @@ module Inquirex
     # @return [Boolean] true if this step only displays content (no input)
     def display?
       DISPLAY_VERBS.include?(@verb)
+    end
+
+    # Returns the explicit widget hint for the given target, or nil.
+    #
+    # @param target [Symbol] e.g. :desktop, :mobile, :tty
+    # @return [WidgetHint, nil]
+    def widget_hint_for(target: :desktop)
+      @widget_hints&.fetch(target.to_sym, nil)
+    end
+
+    # Returns the explicit hint for the target, falling back to the
+    # registry default for this node's type when no explicit hint is set.
+    #
+    # @param target [Symbol] e.g. :desktop, :mobile, :tty
+    # @return [WidgetHint, nil]
+    def effective_widget_hint_for(target: :desktop)
+      widget_hint_for(target:) || WidgetRegistry.default_hint_for(@type, context: target)
     end
 
     # Resolves the next step id from current answers by evaluating transitions in order.
@@ -115,6 +135,12 @@ module Inquirex
       end
 
       hash["transitions"] = @transitions.map(&:to_h) unless @transitions.empty?
+
+      if @widget_hints && !@widget_hints.empty?
+        hash["widget"] = @widget_hints.transform_keys(&:to_s)
+                                      .transform_values(&:to_h)
+      end
+
       hash
     end
 
@@ -132,10 +158,12 @@ module Inquirex
       transitions_data = hash["transitions"] || hash[:transitions] || []
       skip_if_data = hash["skip_if"] || hash[:skip_if]
       default = hash["default"] || hash[:default]
+      widget_data = hash["widget"] || hash[:widget]
 
       transitions = transitions_data.map { |t| Transition.from_h(t) }
       skip_if = skip_if_data ? Rules::Base.from_h(skip_if_data) : nil
       options = deserialize_options(raw_options)
+      widget_hints = deserialize_widget_hints(widget_data)
 
       new(
         id:,
@@ -146,7 +174,8 @@ module Inquirex
         options:,
         transitions:,
         skip_if:,
-        default:
+        default:,
+        widget_hints:
       )
     end
 
@@ -159,7 +188,6 @@ module Inquirex
         @option_labels = raw.transform_keys(&:to_s).transform_values(&:to_s).freeze
       when Array
         if raw.first.is_a?(Hash)
-          # Already in [{ "value" => ..., "label" => ... }] format
           @options = raw.map { |o| (o["value"] || o[:value]).to_s }.freeze
           @option_labels = raw.to_h { |o| [(o["value"] || o[:value]).to_s, (o["label"] || o[:label]).to_s] }.freeze
         else
@@ -188,5 +216,14 @@ module Inquirex
       raw.to_h { |o| [(o["value"] || o[:value]).to_s, (o["label"] || o[:label]).to_s] }
     end
     private_class_method :deserialize_options
+
+    def self.deserialize_widget_hints(widget_data)
+      return nil unless widget_data.is_a?(Hash) && widget_data.any? { |_, v| v.is_a?(Hash) }
+
+      widget_data.each_with_object({}) do |(target, hint_hash), acc|
+        acc[target.to_sym] = WidgetHint.from_h(hint_hash)
+      end
+    end
+    private_class_method :deserialize_widget_hints
   end
 end

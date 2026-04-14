@@ -18,6 +18,7 @@ module Inquirex
         @skip_if = nil
         @default = nil
         @compute = nil
+        @widget_hints = {}
       end
 
       # Sets the input data type for :ask steps.
@@ -43,6 +44,21 @@ module Inquirex
       # @param list [Array, Hash]
       def options(list)
         @options = list
+      end
+
+      # Sets a rendering hint for the given target context.
+      # Recognized targets: :desktop, :mobile, :tty (and any future targets).
+      #
+      # @param type [Symbol] widget type (e.g. :radio_group, :dropdown)
+      # @param target [Symbol] rendering context (default: :desktop)
+      # @param opts [Hash] widget-specific options (e.g. columns: 2)
+      #
+      # @example
+      #   widget target: :desktop, type: :radio_group, columns: 2
+      #   widget target: :mobile,  type: :dropdown
+      #   widget target: :tty,     type: :select
+      def widget(type:, target: :desktop, **opts)
+        @widget_hints[target.to_sym] = WidgetHint.new(type:, options: opts)
       end
 
       # Adds a conditional transition. First matching transition wins.
@@ -85,14 +101,15 @@ module Inquirex
       def build(id)
         Node.new(
           id:,
-          verb:        @verb,
-          type:        resolve_type,
-          question:    @question,
-          text:        @text,
-          options:     @options,
-          transitions: @transitions,
-          skip_if:     @skip_if,
-          default:     @default
+          verb:         @verb,
+          type:         resolve_type,
+          question:     @question,
+          text:         @text,
+          options:      @options,
+          transitions:  @transitions,
+          skip_if:      @skip_if,
+          default:      @default,
+          widget_hints: resolve_widget_hints
         )
       end
 
@@ -103,6 +120,20 @@ module Inquirex
         return :boolean if @verb == :confirm && @type.nil?
 
         @type
+      end
+
+      # Fills in registry defaults for targets not explicitly set (collecting steps only).
+      # Display verbs get nil widget_hints.
+      def resolve_widget_hints
+        effective_type = resolve_type
+        return nil if effective_type.nil? && @widget_hints.empty?
+
+        hints = @widget_hints.dup
+        %i[desktop mobile].each do |target|
+          hints[target] ||= WidgetRegistry.default_hint_for(effective_type, context: target)
+        end
+        hints.compact!
+        hints.empty? ? nil : hints
       end
     end
   end
