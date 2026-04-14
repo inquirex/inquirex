@@ -19,6 +19,40 @@ module Inquirex
         @default = nil
         @compute = nil
         @widget_hints = {}
+        @accumulations = []
+      end
+
+      # Declares how this step's answer contributes to a named accumulator.
+      # Exactly one shape key should be provided:
+      #   lookup:        Hash of answer_value => amount (for :enum)
+      #   per_selection: Hash of option_value => amount (for :multi_enum)
+      #   per_unit:      Numeric rate (multiplied by the numeric answer)
+      #   flat:          Numeric (added when the step has any answer)
+      #
+      # @example
+      #   accumulate :price, lookup: { single: 200, mfj: 400 }
+      #   accumulate :price, per_unit: 25
+      #   accumulate :price, per_selection: { c: 150, e: 75 }
+      #   accumulate :complexity, flat: 1
+      def accumulate(target, lookup: nil, per_selection: nil, per_unit: nil, flat: nil)
+        shape, payload = pick_accumulator_shape(lookup:, per_selection:, per_unit:, flat:)
+        @accumulations << Accumulation.new(target:, shape:, payload:)
+      end
+
+      # Sugar for the common `:price` accumulator. Accepts either a shape keyword
+      # (`lookup:`, `per_selection:`, `per_unit:`, `flat:`) or — when given plain
+      # option=>amount keys — treats it as a `lookup`. So both work:
+      #
+      #   price single: 200, mfj: 400           # => lookup
+      #   price per_unit: 25                    # => per_unit
+      #   price lookup: { single: 200, ... }    # => lookup (explicit)
+      def price(**kwargs)
+        shape_keys = %i[lookup per_selection per_unit flat]
+        if kwargs.keys.intersect?(shape_keys)
+          accumulate(:price, **kwargs.slice(*shape_keys))
+        else
+          accumulate(:price, lookup: kwargs)
+        end
       end
 
       # Sets the input data type for :ask steps.
@@ -101,19 +135,29 @@ module Inquirex
       def build(id)
         Node.new(
           id:,
-          verb:         @verb,
-          type:         resolve_type,
-          question:     @question,
-          text:         @text,
-          options:      @options,
-          transitions:  @transitions,
-          skip_if:      @skip_if,
-          default:      @default,
-          widget_hints: resolve_widget_hints
+          verb:          @verb,
+          type:          resolve_type,
+          question:      @question,
+          text:          @text,
+          options:       @options,
+          transitions:   @transitions,
+          skip_if:       @skip_if,
+          default:       @default,
+          widget_hints:  resolve_widget_hints,
+          accumulations: @accumulations
         )
       end
 
       private
+
+      def pick_accumulator_shape(lookup:, per_selection:, per_unit:, flat:)
+        provided = { lookup:, per_selection:, per_unit:, flat: }.compact
+        if provided.size != 1
+          raise Errors::DefinitionError,
+            "accumulate requires exactly one of :lookup, :per_selection, :per_unit, :flat (got #{provided.keys})"
+        end
+        provided.first
+      end
 
       def resolve_type
         # :confirm is sugar for :ask with type :boolean

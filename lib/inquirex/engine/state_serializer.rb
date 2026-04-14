@@ -8,7 +8,8 @@ module Inquirex
       SYMBOLIZERS = {
         current_step_id: ->(v) { v&.to_sym },
         history:         ->(v) { Array(v).map { |e| e&.to_sym } },
-        answers:         ->(v) { symbolize_answers(v) }
+        answers:         ->(v) { symbolize_answers(v) },
+        totals:          ->(v) { symbolize_answers(v) }
       }.freeze
 
       # Normalizes a state hash so step ids and history entries are symbols.

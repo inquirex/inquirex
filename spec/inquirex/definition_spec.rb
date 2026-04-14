@@ -99,6 +99,38 @@ RSpec.describe Inquirex::Definition do
     end
   end
 
+  describe "meta theme support" do
+    subject(:themed) do
+      Inquirex.define id: "themed" do
+        meta title: "T",
+          brand: { name: "Acme", logo: "https://cdn/logo.png" },
+          theme: { brand: "#2563eb", on_brand: "#fff", radius: "18px", header_font: "Inter" }
+        start :q
+        ask :q do
+          type :string
+          question "?"
+          transition to: :q
+        end
+      end
+    end
+
+    it "carries the theme in meta" do
+      expect(themed.meta[:theme]).to include(brand: "#2563eb", radius: "18px")
+    end
+
+    it "converts snake_case keys to camelCase for the JS widget" do
+      expect(themed.meta[:theme]).to include(onBrand: "#fff", headerFont: "Inter")
+      expect(themed.meta[:theme]).not_to have_key(:on_brand)
+    end
+
+    it "survives JSON round-trip" do
+      restored = described_class.from_json(themed.to_json)
+      expect(restored.meta["theme"]["brand"]).to eq("#2563eb")
+      expect(restored.meta["theme"]["onBrand"]).to eq("#fff")
+      expect(restored.meta["brand"]["logo"]).to eq("https://cdn/logo.png")
+    end
+  end
+
   describe ".from_json with invalid JSON" do
     it "raises SerializationError" do
       expect do

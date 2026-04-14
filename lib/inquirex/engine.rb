@@ -10,7 +10,7 @@ module Inquirex
   # Validates each answer via an optional Validation::Adapter, then advances using
   # node transitions. Skips steps whose skip_if rule evaluates to true.
   class Engine
-    attr_reader :definition, :answers, :history, :current_step_id
+    attr_reader :definition, :answers, :history, :current_step_id, :totals
 
     # @param definition [Definition] the flow to run
     # @param validator [Validation::Adapter] optional (default: NullAdapter)
@@ -20,8 +20,17 @@ module Inquirex
       @history = []
       @current_step_id = definition.start_step_id
       @validator = validator
+      @totals = init_totals
       @history << @current_step_id
       skip_display_steps_if_needed
+    end
+
+    # Convenience accessor for a single accumulator's running total.
+    #
+    # @param name [Symbol] accumulator name (e.g. :price)
+    # @return [Numeric]
+    def total(name)
+      @totals[name.to_sym] || 0
     end
 
     # @return [Node, nil] current step node, or nil if flow is finished
@@ -52,6 +61,7 @@ module Inquirex
       raise Errors::ValidationError, "Validation failed: #{result.errors.join(", ")}" unless result.valid?
 
       @answers[@current_step_id] = value
+      apply_accumulations(current_step, value)
       advance_step
     end
 
@@ -71,7 +81,8 @@ module Inquirex
       {
         current_step_id: @current_step_id,
         answers:         @answers,
-        history:         @history
+        history:         @history,
+        totals:          @totals
       }
     end
 
@@ -96,6 +107,20 @@ module Inquirex
       @current_step_id = state[:current_step_id]
       @answers = state[:answers] || {}
       @history = state[:history] || []
+      @totals = state[:totals] || init_totals
+    end
+
+    def init_totals
+      @definition.accumulators.each_with_object({}) do |(name, acc), h|
+        h[name] = acc.default
+      end
+    end
+
+    def apply_accumulations(node, answer)
+      node.accumulations.each do |accumulation|
+        @totals[accumulation.target] ||= 0
+        @totals[accumulation.target] += accumulation.contribution(answer)
+      end
     end
 
     def advance_step
