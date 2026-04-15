@@ -381,6 +381,23 @@ Behavior:
 - Use `finished?` to detect completion
 - Use `total(:price)` / `totals` to read running totals
 - Use `to_state` / `.from_state` for persistence/resume (totals included)
+- Use `prefill!(hash)` to merge externally-supplied answers into the state,
+  e.g. fields extracted by an LLM from a free-text answer (see
+  [inquirex-llm](#extension-gems)). Existing answers are preserved; `nil`
+  and empty values are ignored so they don't spuriously satisfy
+  `not_empty` rules. The engine auto-advances past any newly-skippable step.
+
+```ruby
+engine = Inquirex::Engine.new(definition)
+engine.answer("I'm MFJ with two kids in California.") # free-text :describe
+
+# Step is now :extracted (a clarify node); adapter returns a Hash.
+result = adapter.call(engine.current_step, engine.answers)
+engine.answer(result)           # store under the clarify step's id
+engine.prefill!(result)         # splat into top-level answers
+# Downstream :filing_status, :dependents, :state are now auto-skipped by
+# `skip_if not_empty(:filing_status)` etc.
+```
 
 ### Validation Adapter
 
