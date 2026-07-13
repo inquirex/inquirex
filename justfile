@@ -1,38 +1,69 @@
-set shell := ["bash", "-lc"]
+# Tell 'just' to run bash, source our setup script, then execute the recipe
+set shell := ["bash", "-c"]
 
-rbenv := 'eval "$(rbenv init -)"'
+version := `grep VERSION lib/inquirex/version.rb | awk '{print $3}' | tr -d '"' | tr -d '\n'`
+rbenv   := 'eval "$(rbenv init bash)"; bundle exec '
+repo    := 'git@github.com:inquirex/inquirex.git'
 
 [no-exit-message]
 recipes:
-    @just --choose
+    just --choose
 
 # Sync all dependencies
 install:
-    {{rbenv}} && bin/setup
+    bin/setup
 
-# Lint and reformat files
-lint-fix *args:
-    {{rbenv}} && bundle exec rubocop -a
-
-alias format := lint-fix
+build: install
 
 # Lint and reformat files
 lint:
-    {{rbenv}} && bundle exec rubocop
+    {{ rbenv }} rubocop
+
+# Lint and reformat files (-a) — pass -A as an argument
+format *args:
+    {{ rbenv }} rubocop -a {{ args }}
 
 # Run all the tests
 test *args: 
-    {{rbenv}} &&  ENVIRONMENT=test bundle exec rspec {{args}}
+    export ENVIRONMENT=test; {{ rbenv }} rspec {{args}}
 
 # Run tests with coverage
 test-coverage *args:
-    ENVIRONMENT=test COVERAGE=true bundle exec rspec
+    export ENVIRONMENT=test; export COVERAGE=true; {{ rbenv }} rspec {{ args }}
+
+check-all: lint test-coverage 
 
 clean:
     #!/usr/bin/env bash
-    find . -name .DS_Store -delete -print || true
-    rm -rf tmp/*
+    @find . -name .DS_Store -delete -print || true
+    @rm -rf tmp/*
 
 # Run all lefthook pre-commit hooks
-ci:
-    {{rbenv}} && lefthook run pre-commit --all-files
+lefthook:
+    {{ rbenv }} lefthook run pre-commit --all-files
+
+# Print current gem version
+version:
+    @echo "{{ version }}"
+
+# Clobber
+clobber: 
+    {{ rbenv }} rake clobber
+
+# Generate documentation
+doc: 
+    #!/usr/bin/env bash
+    {{ rbenv }} rake doc
+
+# Create
+publish: build
+    {{ rbenv }} rake release[remote]
+
+
+# Tag v{{ version }}, publish the GH release, & refresh the Homebrew tap.
+release:
+    git fetch --tags
+    git tag -f "v{{ version }}"
+    git push -f --tags
+    gh release delete -y "v{{ version }}" --repo {{ repo }} 2>/dev/null || true
+    gh release create "v{{ version }}" --generate-notes --repo {{ repo }}

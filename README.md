@@ -4,6 +4,19 @@
 
 `inquirex` is a pure Ruby, declarative, rules-driven questionnaire engine for building conditional intake forms, qualification wizards, and branching surveys.
 
+> [!IMPORTANT]
+>
+> Note that `inquirex` is the base gem of the ecosystem that contains:
+>
+> - [`inquirex`](https://github.com/inquirex/inquirex)
+> - [`inquirex-llm`](https://github.com/inquirex/inquirex-llm)
+> - [`inquirex-tty`](https://github.com/inquirex/inquirex-)
+> - [`inquirex-js`](https://github.com/inquirex/inquirex-js)
+>
+> For a presentation on these gems and what they do please watch the [RubySF presentation](https://www.youtube.com/watch?v=iaoKW7Ap3_M&t=1s) and you can also [view the slides form the presentation](https://reinvent.one/images/talks/pdfs/2026.inquirex.pdf).
+
+## Summary
+
 It is the core gem in the Inquirex ecosystem and focuses on:
 
 - A conversational DSL (`ask`, `say`, `header`, `btw`, `warning`, `confirm`)
@@ -17,8 +30,8 @@ It is the core gem in the Inquirex ecosystem and focuses on:
 
 ## Status
 
-- Version: `0.2.0`
-- Ruby: `>= 4.0.0` (project currently uses `4.0.2`)
+- Version: `0.4.0`
+- Ruby: `>= 4.0.0` (project currently uses `4.0.5`)
 - Test suite: `220 examples, 0 failures`
 - Coverage: ~`94%` line coverage
 
@@ -282,7 +295,11 @@ engine.totals             # => { price: 700.0, complexity: 4 }
 
 ### JSON wire format
 
-Accumulators serialize predictably, keeping the contract with `inquirex-js` explicit:
+Accumulators serialize predictably, keeping the contract with `inquirex-js` explicit.
+
+> [!NOTE]
+>
+> You can convert between Ruby DSL and JSON using the [`inquirex-tty`](https://github.com/inquirex/inquirex-tty) gem.
 
 ```json
 {
