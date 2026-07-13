@@ -6,14 +6,14 @@ source "https://rubygems.org"
 gemspec
 
 gem "irb"
-gem "rake", "~> 13.0"
+gem "rake"
 
-gem "rspec", "~> 3.0"
-gem "rspec-its", "~> 2"
+gem "rspec"
+gem "rspec-its"
 
-gem "rubocop", "~> 1.21"
-gem "rubocop-rspec", "~> 3.9"
+gem "rubocop"
+gem "rubocop-rspec"
 gem "coverage-badge"
-gem "simplecov", "~> 0.22"
+gem "simplecov"
 
 gem "yard"

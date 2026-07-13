@@ -3,14 +3,12 @@
 require "simplecov"
 require "coverage/badge"
 
+SimpleCov.skip /spec/
 SimpleCov.start do
-  add_filter "/spec/"
-  self.formatters = SimpleCov::Formatter::MultiFormatter.new(
-    [
-      SimpleCov::Formatter::HTMLFormatter,
-      Coverage::Badge::Formatter
-    ]
-  )
+  self.formatters = [
+    SimpleCov::Formatter::HTMLFormatter,
+    Coverage::Badge::Formatter
+  ]
 end
 
 SimpleCov.at_exit do
