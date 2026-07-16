@@ -1,50 +1,72 @@
-[![Ruby](https://github.com/inquirex/inquirex/actions/workflows/main.yml/badge.svg)](https://github.com/inquirex/inquirex/actions/workflows/main.yml)   ![Coverage](docs/badges/coverage_badge.svg)
+[![Gem Version](https://badge.fury.io/rb/inquirex.svg)](https://badge.fury.io/rb/inquirex) [![Ruby](https://github.com/inquirex/inquirex/actions/workflows/main.yml/badge.svg)](https://github.com/inquirex/inquirex/actions/workflows/main.yml) ![Coverage](docs/badges/coverage_badge.svg)
 
 # Inquirex
 
-`inquirex` is a pure Ruby, declarative, rules-driven questionnaire engine for building conditional intake forms, qualification wizards, and branching surveys.
+`inquirex` family of libraries (part Ruby, part JavaScript), is a declarative, rules-driven questionnaire engine for building conditional intake forms, qualification wizards, and branching surveys, which can be AI-enabled, and rendered on your site inside a "copilot" widget window or in a TUI (Terminal UI) all the same.
 
 > [!IMPORTANT]
 >
-> Note that `inquirex` is the base gem of the ecosystem that contains:
+> Today the ecosystem contains:
 >
-> - [`inquirex`](https://github.com/inquirex/inquirex)
-> - [`inquirex-llm`](https://github.com/inquirex/inquirex-llm)
-> - [`inquirex-tty`](https://github.com/inquirex/inquirex-)
-> - [`inquirex-js`](https://github.com/inquirex/inquirex-js)
+> - [`inquirex`](https://github.com/inquirex/inquirex): the base gem that defines the graph via DSL and provides most of the backend features
+> - [`inquirex-llm`](https://github.com/inquirex/inquirex-llm): a tiny gem that extends the DSL by the word `extract` which, given a previous question answered in the form of free text, can use the model of your choice to return structured breakdown of text into answers to questions that might follow, thus shortening the form considerably.
+> - [`inquirex-tty`](https://github.com/inquirex/inquirex-tty): is the gem that renders the forms on the TUI (Terminal UI). This is also the gem that provides the CLI `inqurex` for performing various tasks such as validating DSL files, converting them from Ruby to JSON and back, and more. It is also the gem where a folder of DSL `examples` can be used to get a feel for how this works.
+> - [`inquirex-js`](https://github.com/inquirex/inquirex-js) (`npmjs` module [`@kigster/inquirex-js`](https://www.npmjs.com/package/@kigster/inquirex-js)) is the NPM package that connects web UI with the form definition in JSON format. If LLM is not needed, the entire flow becomes deterministic and collects answers as the user answers your questions, and then POSTS them to the URL of your choice.
 >
-> For a presentation on these gems and what they do please watch the [RubySF presentation](https://www.youtube.com/watch?v=iaoKW7Ap3_M&t=1s) and you can also [view the slides form the presentation](https://reinvent.one/images/talks/pdfs/2026.inquirex.pdf).
+> For a presentation about these gems and what they do please watch the [RubySF presentation](https://www.youtube.com/watch?v=iaoKW7Ap3_M&t=1s) and you can also [view the slides form the presentation](https://reinvent.one/images/talks/pdfs/2026.inquirex.pdf).
+>
+> Finally, the SaaS application [qualified.at](https://qualified.at) allows busy professionals such as consultants, doctors, tax-preparers, who are short on time, or can't be bothered to figure out the technical side of integrating these libraries, to leverage the entire ecosystem by creating their own custom lead intake forms on the SaaS application, dropping the auto-generated widget on their (potentially static website), and showing the copilot to their customers, customizing from nothing at all, to what triggers copilot's appearance, it's look and feel, and so on. The site automatically supports the LLM keyword `extract` as part of the DSL, and also collects the answers from your leads in your account: the data that you own, and can export at any time into a CSV download, a Google Spreadsheet, etc.
+
+## Why Inquirex?
+
+There are plenty of form builders, state machines, workflow libraries, etc. And yet, none of them combine the convenience of a DSL with logical separation between the form substance, and the rendering UI quite like this.
+
+There are plenty of form building gems, hard-coded branching controllers, React components, or database callbacks.
+
+***Inquirex is quite different.***
+
+It provides a rich DSL for creating dynamic user intake forms, with complexity ranging from a simple straight-line forms to multi-branch, conditional forms with dozens of potential branches, *UI widget hints* for various rendering platforms, with *accumulators* that allow computing sums or products based on user's answers (which allow you to compute — for user or for yourself — that the service you are requesting will cost between $X & $Y).
+
+> [!NOTE]
+>
+> For technically inclined, Inquirex turns user forms into a directed graph, where nodes are either questions or statements (or UI transitions), while edges are AST-based logical conditions that can be stacked and joined in arbitrarily complex ways, allowing you to move from one question to any other based on the previous answer. See the details below.
+
+***Don't want to deal with figuring it out? Head to [Qualified.At](https://qualified.at/onboarding) and walk through the demo onboarding form, that exists specifically to show you how quickly you can have the same conceptually on your site, tailored to YOUR users.***
 
 ## Summary
 
-It is the core gem in the Inquirex ecosystem and focuses on:
+This one is the core gem in the Inquirex ecosystem that focuses on:
 
 - A conversational DSL (`ask`, `say`, `header`, `btw`, `warning`, `confirm`)
+
 - A serializable AST rule system (`contains`, `equals`, `greater_than`, `less_than`, `not_empty`, `all`, `any`)
+
 - Framework-agnostic widget rendering hints (`widget` DSL verb, `WidgetHint`, `WidgetRegistry`)
-- Named **accumulators** for running totals (pricing, complexity scoring, credit scoring, lead qualification)
+
+- Named ***accumulators*** for running totals (pricing, complexity scoring, credit scoring, lead qualification)
+
 - An immutable flow definition graph
+
 - A runtime engine for stateful step traversal
+
 - JSON round-trip serialization for cross-platform clients
-- A structured `Answers` wrapper and Mermaid graph export
 
-## Status
+- A structured `Answers` wrapper and Mermaid graph export (provided by `inquirex-tty` gem's CLI)
 
-- Version: `0.4.0`
-- Ruby: `>= 4.0.0` (project currently uses `4.0.5`)
-- Test suite: `220 examples, 0 failures`
-- Coverage: ~`94%` line coverage
+- In short:
 
-## Why Inquirex
+  - Define once in Ruby
+  - Serialize to JSON if you need to show the questions on the web UI
+  - Evaluate transitions consistently using rule AST objects
+  - Run the same flow identically in concept in different frontends (web widget, TUI, etc.)
 
-Many form builders hard-code branching in controllers, React components, or database callbacks. Inquirex keeps flow logic in one portable graph:
+So, if you ever wanted to ask users who arrive at your site a few simple questions (PII questions are strongly discouraged due to the fact that the gem is typically used by non-logged in users on your end — except, perhaps, name and email), and depending on their answers you might want to dig a bit deeper, so that once you get on the phone with them you'll already have a general picture, these gems are for you (or head to [qualified.at](https://qualified.at) and set up your free account to see how this works in practice.
 
-- Define once in Ruby
-- Serialize to JSON
-- Evaluate transitions consistently using rule AST objects
-- Run the same flow in different frontends (web widget, terminal, etc.)
+## Examples
 
-This design is the foundation for the broader ecosystem (`inquirex-ui`, `inquirex-tty`, `inquirex-js`, `inquirex-llm`, `inquirex-rails`).
+> [!NOTE]
+>
+> There are a couple of examples shown in this `README` file, and also in the [`./examples`](./examples) folder. You can read about running them in a [`README.md`](./examples/README.md) inside that folder.
 
 ## Installation
 
@@ -52,6 +74,10 @@ Add to your Gemfile:
 
 ```ruby
 gem "inquirex"
+#  if you are building a TUI or need the CLI version of this gem
+gem "inquirex-tty" 
+#  if you want to add the keyword `extract` to the DSL vocabilary
+gem "inquire-llm"  
 ```
 
 Then install:
@@ -59,6 +85,8 @@ Then install:
 ```bash
 bundle install
 ```
+
+And then, define your form as a Ruby DSL file (see [examples](https://github.com/inquirex/inquirex-tty/tree/main/examples) on Github), and consume it by either the `inquirex-tty` gem on the command line, or on the web via the [@kigster/inqiurex-js](https://www.npmjs.com/package/@kigster/inquirex-js) npmjs package.
 
 ## Quick Start
 
@@ -170,26 +198,35 @@ end
 
 When no explicit `widget` is set, `WidgetRegistry` fills in sensible defaults per data type:
 
-| Data Type | Desktop | Mobile | TTY |
-|-----------|---------|--------|-----|
-| `:enum` | `radio_group` | `dropdown` | `select` |
+| Data Type     | Desktop          | Mobile           | TTY            |
+| ------------- | ---------------- | ---------------- | -------------- |
+| `:enum`       | `radio_group`    | `dropdown`       | `select`       |
 | `:multi_enum` | `checkbox_group` | `checkbox_group` | `multi_select` |
-| `:boolean` | `toggle` | `yes_no_buttons` | `yes_no` |
-| `:string` | `text_input` | `text_input` | `text_input` |
-| `:text` | `textarea` | `textarea` | `multiline` |
-| `:integer` | `number_input` | `number_input` | `number_input` |
-| `:currency` | `currency_input` | `currency_input` | `number_input` |
-| `:date` | `date_picker` | `date_picker` | `text_input` |
+| `:boolean`    | `toggle`         | `yes_no_buttons` | `yes_no`       |
+| `:string`     | `text_input`     | `text_input`     | `text_input`   |
+| `:text`       | `textarea`       | `textarea`       | `multiline`    |
+| `:integer`    | `number_input`   | `number_input`   | `number_input` |
+| `:currency`   | `currency_input` | `currency_input` | `number_input` |
+| `:date`       | `date_picker`    | `date_picker`    | `text_input`   |
 
 Display verbs (`say`, `header`, `btw`, `warning`) have no widget hints.
 
 Widget hints are included in JSON serialization under a `"widget"` key, keyed by target:
 
 ```json
-"widget": {
-  "desktop": { "type": "radio_group", "columns": 3 },
-  "mobile":  { "type": "dropdown" },
-  "tty":     { "type": "select" }
+{
+  "widget": {
+    "desktop": {
+      "type": "radio_group",
+      "columns": 3
+    },
+    "mobile": {
+      "type": "dropdown"
+    },
+    "tty": {
+      "type": "select"
+    }
+  }
 }
 ```
 
@@ -197,7 +234,7 @@ Widget hints are included in JSON serialization under a `"widget"` key, keyed by
 
 ```ruby
 step = definition.step(:priority)
-step.widget_hint_for(target: :desktop)            # explicit hint or nil
+step.widget_hint_for(target: :desktop)             # explicit hint or nil
 step.effective_widget_hint_for(target: :desktop)   # explicit hint or registry default
 ```
 
@@ -225,12 +262,12 @@ end
 
 Use the `accumulate` verb inside any `ask`/`confirm` step. Exactly one **shape** key must be provided:
 
-| Shape | Fits | Semantics |
-|-------|------|-----------|
-| `lookup: { ... }` | `:enum` | Adds the amount mapped to the chosen option value |
-| `per_selection: { ... }` | `:multi_enum` | Sums the amounts for every selected option |
-| `per_unit: N` | `:integer`, `:decimal` | Multiplies the numeric answer by `N` |
-| `flat: N` | any type | Adds `N` when the step has a truthy, non-empty answer |
+| Shape                    | Fits                   | Semantics                                             |
+| ------------------------ | ---------------------- | ----------------------------------------------------- |
+| `lookup: { ... }`        | `:enum`                | Adds the amount mapped to the chosen option value     |
+| `per_selection: { ... }` | `:multi_enum`          | Sums the amounts for every selected option            |
+| `per_unit: N`            | `:integer`, `:decimal` | Multiplies the numeric answer by `N`                  |
+| `flat: N`                | any type               | Adds `N` when the step has a truthy, non-empty answer |
 
 ```ruby
 ask :filing_status do
@@ -540,15 +577,10 @@ Inquirex.define do       # one entry point, all verbs available
 end
 ```
 
-### Ecosystem
-
-- **`inquirex-llm`** -- LLM-powered verbs (`clarify`, `describe`, `summarize`, `detour`) for server-side AI processing
-- **`inquirex-tty`** -- terminal adapter using TTY Toolkit
-- **`inquirex-js`** -- embeddable browser widget (chat-style)
-- **`inquirex-rails`** -- Rails Engine for persistence, API, and asset serving
-
-> **Note:** `inquirex-ui` has been merged into core as of v0.2.0. Widget hints (`widget` DSL verb, `WidgetHint`, `WidgetRegistry`) are now built in.
-
 ## License
 
-MIT. See `LICENSE.txt`.
+MIT. See [`LICENSE.txt`](LICENSE.txt).
+
+© 2026 Konstantin Gredeskoul.
+
+0

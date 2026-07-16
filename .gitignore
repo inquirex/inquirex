@@ -1,3 +1,4 @@
+/.idea
 **/.DS_Store
 /.bundle/
 /.yardoc
@@ -11,3 +12,4 @@
 
 # rspec failure tracking
 .rspec_status
+mermaid.html

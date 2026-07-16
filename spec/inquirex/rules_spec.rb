@@ -88,7 +88,7 @@ RSpec.describe Inquirex::Rules do
       )
     end
 
-    its(:to_s) { is_expected.to match(/AND/) }
+    its(:to_s) { is_expected.to include('AND') }
 
     it { expect(rule.evaluate(answers)).to be true }
     it { expect(rule.evaluate({ income_types: ["W2"], count: 0 })).to be false }
@@ -109,7 +109,7 @@ RSpec.describe Inquirex::Rules do
       )
     end
 
-    its(:to_s) { is_expected.to match(/OR/) }
+    its(:to_s) { is_expected.to include('OR') }
 
     it { expect(rule.evaluate(answers)).to be true }
     it { expect(rule.evaluate({ income_types: ["W2"] })).to be false }

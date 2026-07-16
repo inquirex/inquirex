@@ -31,7 +31,9 @@ test *args:
 test-coverage *args:
     export ENVIRONMENT=test; export COVERAGE=true; {{ rbenv }} rspec {{ args }}
 
-check-all: lint test-coverage 
+ci: lint test-coverage 
+
+alias check-all := ci
 
 clean:
     #!/usr/bin/env bash
@@ -58,7 +60,6 @@ doc:
 # Create
 publish: build
     {{ rbenv }} rake release[remote]
-
 
 # Tag v{{ version }}, publish the GH release, & refresh the Homebrew tap.
 release:
