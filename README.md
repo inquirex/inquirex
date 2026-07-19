@@ -466,6 +466,33 @@ Pass a custom adapter to the engine:
 engine = Inquirex::Engine.new(definition, validator: my_validator)
 ```
 
+## Completion Metadata
+
+When a flow finishes, the engine guarantees a `CompletionMetadata` — an
+OpenStruct describing how the answers were collected. Only `engine` and
+`engine_version` are required members; rendering front-ends attach richer
+environment details from an `after_completion` hook:
+
+```ruby
+engine.after_completion do |eng|
+  eng.completion_metadata = Inquirex::CompletionMetadata.new(
+    engine:         "inquirex-tty",
+    engine_version: Inquirex::TTY::VERSION,
+    uname:          OpenStruct.new(Etc.uname),
+    user:           Etc.getlogin,
+    terminal:       ENV["LC_TERMINAL"] || ENV["TERM_PROGRAM"] || "Unknown"
+  )
+end
+```
+
+If no hook supplies one, the engine stamps the minimal core version
+(`engine: "inquirex"`, `engine_version: Inquirex::VERSION`). The metadata
+persists through `Engine#to_state` / `Engine.from_state`, and
+`engine.answers_with_metadata` merges it into the answers hash under
+`:completion_metadata` — which also makes it available to post-completion
+actions: webhook payloads carry it, and email templates can interpolate
+`{{completion_metadata.engine}}`.
+
 ## Post-Completion Actions
 
 After all questions are answered, `action` declarations run server-side with

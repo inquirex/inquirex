@@ -13,6 +13,10 @@
   fail at rehydration
 - `Inquirex::Actions::Runner` and `Inquirex::Actions.run(definition, answers)`
 - Actions serialize to/from JSON with their rule gates
+- `CompletionMetadata` (OpenStruct; `engine` and `engine_version` required)
+  stamped by the engine at flow completion, enrichable by front-ends via the
+  new `Engine#after_completion` hook, persisted in engine state, and merged
+  into answers by `Engine#answers_with_metadata`
 
 ## [0.1.0] - 2026-04-13
 
