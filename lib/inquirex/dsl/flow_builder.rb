@@ -16,6 +16,7 @@ module Inquirex
         @nodes = {}
         @meta = {}
         @accumulators = {}
+        @actions = []
       end
 
       # Declares a named running total the flow accumulates into as answers come in.
@@ -104,6 +105,28 @@ module Inquirex
         add_step(id, :confirm, &)
       end
 
+      # Declares a named post-completion action: effects (send_email, run, ...)
+      # executed server-side after the flow finishes, with the collected
+      # answers. Runs in declaration order; gate with a serializable rule via
+      # the if: option.
+      #
+      # @param id [Symbol] action identifier
+      # @param opts [Hash] only if: is recognized — a Rules::Base gate
+      # @yield block evaluated in ActionBuilder (send_email, run, ...)
+      def action(id, **opts, &block)
+        rule = opts.delete(:if)
+        raise Errors::DefinitionError, "Unknown action options: #{opts.keys.inspect}" unless opts.empty?
+
+        sym = id.to_sym
+        if @actions.any? { |a| a.id == sym }
+          raise Errors::DefinitionError, "Duplicate action id: #{sym.inspect}"
+        end
+
+        builder = ActionBuilder.new
+        builder.instance_eval(&block) if block
+        @actions << builder.build(sym, rule:)
+      end
+
       # Produces the frozen Definition.
       #
       # @return [Definition]
@@ -118,7 +141,8 @@ module Inquirex
           id:            @flow_id,
           version:       @flow_version,
           meta:          @meta,
-          accumulators:  @accumulators
+          accumulators:  @accumulators,
+          actions:       @actions
         )
       end
 

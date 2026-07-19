@@ -26,5 +26,9 @@ module Inquirex
 
     # Raised when serializing or deserializing a Definition to/from JSON fails.
     class SerializationError < Error; end
+
+    # Raised when a post-completion action cannot execute structurally,
+    # e.g. send_email is used without the mail gem installed.
+    class ActionError < Error; end
   end
 end

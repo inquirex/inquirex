@@ -466,6 +466,78 @@ Pass a custom adapter to the engine:
 engine = Inquirex::Engine.new(definition, validator: my_validator)
 ```
 
+## Post-Completion Actions
+
+After all questions are answered, `action` declarations run server-side with
+the collected answers. The flagship effect is `send_email`, which **builds**
+`Mail::Message` objects (the same object ActionMailer wraps) and attaches them
+to `answers.outbox` — **nothing is delivered**; the host application decides
+how and when to send.
+
+```ruby
+Inquirex.define id: "tax-intake-2025" do
+  # ... ask steps ...
+
+  action :client_receipt, if: not_empty(:email) do
+    send_email to:      "{{email}}",
+               from:    "forms@agentica.group",
+               subject: "Thanks {{name}} — we received your intake",
+               text:    <<~TEXT,
+                 Hi {{name}},
+                 We received your answers:
+
+                 {{answers_summary}}
+               TEXT
+               html:    <<~HTML
+                 <p>Hi {{name}},</p>
+                 <img src="https://cdn.agentica.group/logo.png" alt="Logo">
+                 {{answers_summary}}
+               HTML
+  end
+
+  action :admin_alert do
+    send_email to: "owner@agentica.group", from: "forms@agentica.group",
+               subject: "New lead: {{name}} <{{email}}>",
+               html: "{{answers_summary}}"
+    run { |answers, outbox| Metrics.count(:lead, answers.to_flat_h) }
+  end
+end
+```
+
+Execution and delivery:
+
+```ruby
+answers = Inquirex::Actions.run(definition, engine.answers)
+answers.outbox.messages   # => [Mail::Message, ...]
+answers.outbox.results    # => per-action :ok / :skipped / :failed trail
+
+# In a Rails host:
+answers.outbox.each do |message|
+  ActionMailer::Base.wrap_delivery_behavior(message)  # adopt Rails delivery config
+  message.deliver
+end
+```
+
+Key semantics:
+
+- **Templating is `{{field}}` interpolation only** — dot-notation keys resolved
+  against `Answers#to_flat_h`, deliberately inert (no code execution), so
+  definitions stored in a database render safely. Values interpolated into
+  `html:` bodies are HTML-escaped automatically; `text:` bodies stay verbatim.
+  The built-in `{{answers_summary}}` expands to all collected answers.
+- **`if:` gates** reuse the serializable rule AST (`not_empty(:email)`, ...).
+  A false rule records `:skipped` — declare no actions (or gate them) when a
+  flow should only save answers.
+- **`run { |answers, outbox| ... }`** is the full-Ruby escape hatch; like all
+  lambdas it is stripped from JSON.
+- **Failures are isolated**: a raising effect records `:failed` in
+  `outbox.results` and never blocks other actions.
+- **Images** in HTML bodies must be external URLs; attachments are unsupported.
+- The `mail` gem is a soft dependency, needed only when a message is built
+  (Rails hosts already have it via ActionMailer).
+- Effects are extensible: `Inquirex::Actions.register(:webhook, MyEffect)`
+  gives a new verb both DSL and JSON wire support.
+
 ## Serialization
 
 Definitions support round-trip serialization:
@@ -483,6 +555,9 @@ Serialized structure includes:
 - Steps and transitions
 - Rule AST payloads
 - Widget hints
+- Post-completion actions (`actions`) with their rules and effects; `run`
+  blocks are stripped, and an action left with no serializable effects is
+  omitted entirely
 
 Important serialization details:
 
