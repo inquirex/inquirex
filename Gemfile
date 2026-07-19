@@ -8,6 +8,10 @@ gemspec
 gem "irb"
 gem "rake"
 
+# Soft runtime dependency of Actions::SendEmail — required only when a
+# message is built. Listed here so the specs can exercise Mail building.
+gem "mail"
+
 gem "rspec"
 gem "rspec-its"
 

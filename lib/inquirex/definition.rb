@@ -13,7 +13,7 @@ module Inquirex
   # @attr_reader start_step_id [Symbol] id of the first step in the flow
   # @attr_reader steps [Hash<Symbol, Node>] frozen map of step id => node
   class Definition
-    attr_reader :id, :version, :meta, :start_step_id, :steps, :accumulators
+    attr_reader :id, :version, :meta, :start_step_id, :steps, :accumulators, :actions
 
     # @param start_step_id [Symbol] id of the initial step
     # @param nodes [Hash<Symbol, Node>] all steps keyed by id
@@ -21,14 +21,17 @@ module Inquirex
     # @param version [String] semver
     # @param meta [Hash] frontend metadata
     # @param accumulators [Hash<Symbol, Accumulator>] named running totals
+    # @param actions [Array<Actions::Action>] post-completion actions, in order
     # @raise [Errors::DefinitionError] if start_step_id is not present in nodes
-    def initialize(start_step_id:, nodes:, id: nil, version: "1.0.0", meta: {}, accumulators: {})
+    def initialize(start_step_id:, nodes:, id: nil, version: "1.0.0", meta: {},
+      accumulators: {}, actions: [])
       @id = id
       @version = version
       @meta = meta.freeze
       @start_step_id = start_step_id.to_sym
       @steps = nodes.freeze
       @accumulators = accumulators.freeze
+      @actions = actions.freeze
       validate!
       freeze
     end
@@ -73,6 +76,8 @@ module Inquirex
         end
       end
       hash["steps"] = @steps.transform_keys(&:to_s).transform_values(&:to_h)
+      serializable_actions = @actions.select(&:serializable?)
+      hash["actions"] = serializable_actions.map(&:to_h) unless serializable_actions.empty?
       hash
     end
 
@@ -97,6 +102,7 @@ module Inquirex
       start = hash["start"] || hash[:start]
       steps_data = hash["steps"] || hash[:steps] || {}
       acc_data = hash["accumulators"] || hash[:accumulators] || {}
+      actions_data = hash["actions"] || hash[:actions] || []
 
       nodes = steps_data.each_with_object({}) do |(step_id, step_hash), acc|
         sym_id = step_id.to_sym
@@ -108,7 +114,9 @@ module Inquirex
         h[sym] = Accumulator.from_h(sym, entry)
       end
 
-      new(start_step_id: start, nodes:, id:, version:, meta:, accumulators:)
+      actions = actions_data.map { |entry| Actions::Action.from_h(entry) }
+
+      new(start_step_id: start, nodes:, id:, version:, meta:, accumulators:, actions:)
     end
 
     private
