@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module Inquirex
+  # Namespace for pluggable step-answer validation adapters.
   module Validation
     # Result of validating a step answer.
     #

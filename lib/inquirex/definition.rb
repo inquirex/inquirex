@@ -68,6 +68,11 @@ module Inquirex
     # subdomain but not the apex. Matching is case-insensitive; an empty
     # allowlist allows nothing.
     #
+    # @example With allowed_domains ["*.example.com"]
+    #   definition.allowed_host?("api.example.com") # => true
+    #   definition.allowed_host?("API.EXAMPLE.COM") # => true (case-insensitive)
+    #   definition.allowed_host?("example.com")     # => false (wildcard excludes the apex)
+    #
     # @param host [String]
     # @return [Boolean]
     def allowed_host?(host)

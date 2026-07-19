@@ -5,6 +5,7 @@ module Inquirex
     # Handles state serialization for Engine persistence (DB, session store, etc.).
     # Normalizes string-keyed hashes (from JSON round-trips) to symbol-keyed hashes.
     module StateSerializer
+      # Per-key normalizers applied by .symbolize_state; unlisted keys pass through unchanged.
       SYMBOLIZERS = {
         current_step_id:     ->(v) { v&.to_sym },
         history:             ->(v) { Array(v).map { |e| e&.to_sym } },

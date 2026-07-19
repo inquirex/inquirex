@@ -121,6 +121,13 @@ module Inquirex
       # answers. Runs in declaration order; gate with a serializable rule via
       # the if: option.
       #
+      # @example Email the collected answers when business income was selected
+      #   action :notify_sales, if: Rules::Contains.new(:income_types, "Business") do
+      #     send_email to: "sales@example.com",
+      #                subject: "New lead: {{name}}",
+      #                html: "{{answers_summary}}"
+      #   end
+      #
       # @param id [Symbol] action identifier
       # @param opts [Hash] only if: is recognized — a Rules::Base gate
       # @yield block evaluated in ActionBuilder (send_email, run, ...)

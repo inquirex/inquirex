@@ -5,6 +5,11 @@ module Inquirex
     # No-op validator: always accepts any input.
     # Used by default when no validation adapter is configured.
     class NullAdapter < Adapter
+      # Accepts any input unconditionally.
+      #
+      # @param _node [Node] the current step (ignored)
+      # @param _input [Object] value submitted by the user (ignored)
+      # @return [Result] always valid, with no errors
       def validate(_node, _input)
         Result.new(valid: true)
       end

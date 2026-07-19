@@ -119,6 +119,13 @@ module Inquirex
     # none of them provided one. Registering on an already-finished engine
     # invokes the block immediately.
     #
+    # @example Stamp renderer-specific completion metadata
+    #   engine.after_completion do |eng|
+    #     eng.completion_metadata = Inquirex::CompletionMetadata.new(
+    #       engine: "inquirex-tty", engine_version: "0.5.0", hostname: Socket.gethostname
+    #     )
+    #   end
+    #
     # @yield [Engine] the engine, at completion time
     # @return [Engine] self
     def after_completion(&block)

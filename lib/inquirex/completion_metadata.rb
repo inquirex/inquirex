@@ -23,13 +23,15 @@ module Inquirex
   #   meta.hostname        # => nil (unset members read as nil)
   #   meta.to_h            # => plain nested Hash, JSON-ready
   class CompletionMetadata < OpenStruct
+    # Members that must be provided at construction; everything else is optional.
     REQUIRED_MEMBERS = %i[engine engine_version].freeze
 
+    # Exists solely to make :engine and :engine_version required keywords —
+    # OpenStruct itself would accept anything.
+    #
     # @param engine [String] rendering front-end name (e.g. "inquirex-tty")
     # @param engine_version [String] rendering front-end version
     # @param extra [Hash] any additional, optional members
-    # Exists solely to make :engine and :engine_version required keywords —
-    # OpenStruct itself would accept anything.
     def initialize(engine:, engine_version:, **extra) # rubocop:disable Lint/UselessMethodDefinition
       super
     end
@@ -61,6 +63,7 @@ module Inquirex
       JSON.generate(to_h)
     end
 
+    # @return [String] debug representation of the deep-plain member hash
     def inspect
       "#<Inquirex::CompletionMetadata #{to_h.inspect}>"
     end

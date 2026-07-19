@@ -22,7 +22,9 @@ module Inquirex
     # A non-2xx response raises Errors::ActionError, which the Runner records
     # as a :failed result without blocking other actions.
     class Webhook < Base
+      # Default open/read timeout in seconds for the webhook POST.
       DEFAULT_TIMEOUT = 10
+      # Hosts for which plain http is tolerated (local development only).
       LOCAL_HOSTS = %w[localhost 127.0.0.1 ::1 [::1]].freeze
 
       attr_reader :url, :headers, :timeout
@@ -42,6 +44,12 @@ module Inquirex
       # @return [String] lowercase host of the webhook URL
       def host = @uri.host.downcase
 
+      # POSTs the answers envelope to the declared URL.
+      #
+      # @param answers [Answers] completed answers
+      # @param _outbox [Outbox] unused — webhooks build no messages
+      # @return [Net::HTTPResponse] the 2xx response
+      # @raise [Errors::ActionError] when the endpoint responds non-2xx
       def call(answers, _outbox)
         require "net/http"
         response = post(answers)
@@ -52,6 +60,10 @@ module Inquirex
       end
 
       # Enforced from Definition#validate!.
+      #
+      # @param definition [Definition] owning definition, source of allowed_domains
+      # @return [void]
+      # @raise [Errors::DefinitionError] when the host is not allowlisted
       def validate_against(definition)
         return if definition.allowed_host?(host)
 
