@@ -7,6 +7,10 @@
   from `{{field}}` templates into `Answers#outbox`; delivery is the host
   application's responsibility. The `mail` gem is a soft dependency.
 - `run { |answers, outbox| ... }` escape-hatch effect (stripped from JSON)
+- `webhook` effect: POSTs the answers envelope to a static https URL whose
+  host must be covered by the new top-level `allowed_domains` declaration;
+  enforcement runs in `Definition#validate!`, so tampered JSON definitions
+  fail at rehydration
 - `Inquirex::Actions::Runner` and `Inquirex::Actions.run(definition, answers)`
 - Actions serialize to/from JSON with their rule gates
 
