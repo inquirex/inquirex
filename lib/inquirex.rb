@@ -24,6 +24,7 @@ require_relative "inquirex/accumulator"
 require_relative "inquirex/node"
 require_relative "inquirex/definition"
 require_relative "inquirex/answers"
+require_relative "inquirex/completion_metadata"
 
 # Validation
 require_relative "inquirex/validation/adapter"

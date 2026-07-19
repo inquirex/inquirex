@@ -6,10 +6,11 @@ module Inquirex
     # Normalizes string-keyed hashes (from JSON round-trips) to symbol-keyed hashes.
     module StateSerializer
       SYMBOLIZERS = {
-        current_step_id: ->(v) { v&.to_sym },
-        history:         ->(v) { Array(v).map { |e| e&.to_sym } },
-        answers:         ->(v) { symbolize_answers(v) },
-        totals:          ->(v) { symbolize_answers(v) }
+        current_step_id:     ->(v) { v&.to_sym },
+        history:             ->(v) { Array(v).map { |e| e&.to_sym } },
+        answers:             ->(v) { symbolize_answers(v) },
+        totals:              ->(v) { symbolize_answers(v) },
+        completion_metadata: ->(v) { symbolize_answers(v) }
       }.freeze
 
       # Normalizes a state hash so step ids and history entries are symbols.
