@@ -23,6 +23,15 @@ module Inquirex
       # @return [Boolean] whether this effect survives JSON serialization
       def serializable? = true
 
+      # Hook for effects that must be checked against the definition carrying
+      # them (e.g. Webhook vs allowed_domains). Runs inside
+      # Definition#validate!, which both DSL-built and JSON-rehydrated
+      # definitions pass through — so violations fail at load time.
+      #
+      # @param _definition [Definition]
+      # @raise [Errors::DefinitionError] on violation
+      def validate_against(_definition); end
+
       # @return [Hash]
       def to_h
         raise NotImplementedError, "#{self.class}#to_h must be implemented"

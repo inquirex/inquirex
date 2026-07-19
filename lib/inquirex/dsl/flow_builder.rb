@@ -17,6 +17,17 @@ module Inquirex
         @meta = {}
         @accumulators = {}
         @actions = []
+        @allowed_domains = []
+      end
+
+      # Declares the domains outbound effects (webhook) may send answers to.
+      # Conventionally the first declaration in a definition, so the flow's
+      # egress surface is auditable at a glance. "example.com" matches that
+      # host exactly; "*.example.com" matches its subdomains.
+      #
+      # @param domains [Array<String>]
+      def allowed_domains(*domains)
+        @allowed_domains.concat(domains.flatten)
       end
 
       # Declares a named running total the flow accumulates into as answers come in.
@@ -136,13 +147,14 @@ module Inquirex
         raise Errors::DefinitionError, "No steps defined" if @nodes.empty?
 
         Definition.new(
-          start_step_id: @start_step_id,
-          nodes:         @nodes,
-          id:            @flow_id,
-          version:       @flow_version,
-          meta:          @meta,
-          accumulators:  @accumulators,
-          actions:       @actions
+          start_step_id:   @start_step_id,
+          nodes:           @nodes,
+          id:              @flow_id,
+          version:         @flow_version,
+          meta:            @meta,
+          accumulators:    @accumulators,
+          actions:         @actions,
+          allowed_domains: @allowed_domains
         )
       end
 
