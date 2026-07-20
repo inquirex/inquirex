@@ -129,6 +129,60 @@ RSpec.describe Inquirex::CompletionMetadata do
       expect { engine.after_completion }.to raise_error(ArgumentError, /block/)
     end
 
+    its(:completion_hook_errors) { is_expected.to be_empty }
+
+    describe "multiple hooks" do
+      let(:calls) { [] }
+
+      it "runs every hook in registration order" do
+        engine.after_completion { calls << :first }
+        engine.after_completion { calls << :second }
+        engine.after_completion { calls << :third }
+        engine.answer("Alice")
+        expect(calls).to eq(%i[first second third])
+      end
+
+      it "runs the remaining hooks when one raises" do
+        engine.after_completion { calls << :first }
+        engine.after_completion { raise "hook exploded" }
+        engine.after_completion { calls << :third }
+        engine.answer("Alice")
+        expect(calls).to eq(%i[first third])
+      end
+
+      it "records the raised errors instead of propagating them" do
+        engine.after_completion { raise "first boom" }
+        engine.after_completion { raise ArgumentError, "second boom" }
+        expect { engine.answer("Alice") }.not_to raise_error
+        expect(engine.completion_hook_errors.map(&:message)).to eq(["first boom", "second boom"])
+      end
+
+      it "still stamps the core metadata when the hook meant to supply it raises" do
+        engine.after_completion { raise "no metadata for you" }
+        engine.answer("Alice")
+        expect(engine.completion_metadata.to_h)
+          .to eq(engine: "inquirex", engine_version: Inquirex::VERSION)
+      end
+
+      it "keeps metadata from a later hook when an earlier one raises" do
+        engine.after_completion { raise "boom" }
+        engine.after_completion { |eng| eng.completion_metadata = metadata }
+        engine.answer("Alice")
+        expect(engine.completion_metadata).to eq(metadata)
+      end
+
+      it "isolates a hook registered on an already-finished engine" do
+        engine.answer("Alice")
+        expect { engine.after_completion { raise "late boom" } }.not_to raise_error
+        expect(engine.completion_hook_errors.map(&:message)).to eq(["late boom"])
+      end
+
+      it "lets non-StandardError exceptions propagate" do
+        engine.after_completion { raise Interrupt }
+        expect { engine.answer("Alice") }.to raise_error(Interrupt)
+      end
+    end
+
     it "merges metadata into answers_with_metadata when set" do
       engine.after_completion { |eng| eng.completion_metadata = metadata }
       engine.answer("Alice")
