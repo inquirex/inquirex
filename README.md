@@ -435,11 +435,7 @@ Behavior:
 - Use `finished?` to detect completion
 - Use `total(:price)` / `totals` to read running totals
 - Use `to_state` / `.from_state` for persistence/resume (totals included)
-- Use `prefill!(hash)` to merge externally-supplied answers into the state,
-  e.g. fields extracted by an LLM from a free-text answer (see
-  [inquirex-llm](#extension-gems)). Existing answers are preserved; `nil`
-  and empty values are ignored so they don't spuriously satisfy
-  `not_empty` rules. The engine auto-advances past any newly-skippable step.
+- Use `prefill!(hash)` to merge externally-supplied answers into the state, e.g. fields extracted by an LLM from a free-text answer (see [inquirex-llm](#extension-gems)). Existing answers are preserved; `nil` and empty values are ignored so they don't spuriously satisfy `not_empty` rules. The engine auto-advances past any newly-skippable step.
 
 ```ruby
 engine = Inquirex::Engine.new(definition)
@@ -468,10 +464,7 @@ engine = Inquirex::Engine.new(definition, validator: my_validator)
 
 ## Completion Metadata
 
-When a flow finishes, the engine guarantees a `CompletionMetadata` — an
-OpenStruct describing how the answers were collected. Only `engine` and
-`engine_version` are required members; rendering front-ends attach richer
-environment details from an `after_completion` hook:
+When a flow finishes, the engine guarantees a `CompletionMetadata` — an OpenStruct describing how the answers were collected. Only `engine` and `engine_version` are required members; rendering front-ends attach richer environment details from an `after_completion` hook:
 
 ```ruby
 engine.after_completion do |eng|
@@ -485,21 +478,11 @@ engine.after_completion do |eng|
 end
 ```
 
-If no hook supplies one, the engine stamps the minimal core version
-(`engine: "inquirex"`, `engine_version: Inquirex::VERSION`). The metadata
-persists through `Engine#to_state` / `Engine.from_state`, and
-`engine.answers_with_metadata` merges it into the answers hash under
-`:completion_metadata` — which also makes it available to post-completion
-actions: webhook payloads carry it, and email templates can interpolate
-`{{completion_metadata.engine}}`.
+If no hook supplies one, the engine stamps the minimal core version (`engine: "inquirex"`, `engine_version: Inquirex::VERSION`). The metadata persists through `Engine#to_state` / `Engine.from_state`, and `engine.answers_with_metadata` merges it into the answers hash under `:completion_metadata` — which also makes it available to post-completion actions: webhook payloads carry it, and email templates can interpolate `{{completion_metadata.engine}}`.
 
 ## Post-Completion Actions
 
-After all questions are answered, `action` declarations run server-side with
-the collected answers. The flagship effect is `send_email`, which **builds**
-`Mail::Message` objects (the same object ActionMailer wraps) and attaches them
-to `answers.outbox` — **nothing is delivered**; the host application decides
-how and when to send.
+After all questions are answered, `action` declarations run server-side with the collected answers. The flagship effect is `send_email`, which **builds** `Mail::Message` objects (the same object ActionMailer wraps) and attaches them to `answers.outbox` — **nothing is delivered**; the host application decides how and when to send.
 
 ```ruby
 Inquirex.define id: "tax-intake-2025" do
@@ -554,31 +537,14 @@ end
 
 Key semantics:
 
-- **Templating is `{{field}}` interpolation only** — dot-notation keys resolved
-  against `Answers#to_flat_h`, deliberately inert (no code execution), so
-  definitions stored in a database render safely. Values interpolated into
-  `html:` bodies are HTML-escaped automatically; `text:` bodies stay verbatim.
-  The built-in `{{answers_summary}}` expands to all collected answers.
-- **`if:` gates** reuse the serializable rule AST (`not_empty(:email)`, ...).
-  A false rule records `:skipped` — declare no actions (or gate them) when a
-  flow should only save answers.
-- **`run { |answers, outbox| ... }`** is the full-Ruby escape hatch; like all
-  lambdas it is stripped from JSON.
-- **Failures are isolated**: a raising effect records `:failed` in
-  `outbox.results` and never blocks other actions.
+- **Templating is `{{field}}` interpolation only** — dot-notation keys resolved against `Answers#to_flat_h`, deliberately inert (no code execution), so definitions stored in a database render safely. Values interpolated into `html:` bodies are HTML-escaped automatically; `text:` bodies stay verbatim. The built-in `{{answers_summary}}` expands to all collected answers.
+- **`if:` gates** reuse the serializable rule AST (`not_empty(:email)`, ...). A false rule records `:skipped` — declare no actions (or gate them) when a flow should only save answers.
+- **`run { |answers, outbox| ... }`** is the full-Ruby escape hatch; like all lambdas it is stripped from JSON.
+- **Failures are isolated**: a raising effect records `:failed` in `outbox.results` and never blocks other actions.
 - **Images** in HTML bodies must be external URLs; attachments are unsupported.
-- The `mail` gem is a soft dependency, needed only when a message is built
-  (Rails hosts already have it via ActionMailer).
-- **`webhook url:`** POSTs `{"answers": {...}}` as JSON to a static URL. The
-  URL's host must be covered by `allowed_domains`, declared at the top of the
-  definition so the flow's egress surface is auditable at a glance. The check
-  runs inside `Definition.new` — a JSON definition whose webhook URL was
-  tampered with fails at *rehydration*, before anything executes. Also
-  enforced: https only (plain http just for localhost), no userinfo, no
-  `{{field}}` templates in URLs (the destination must be static), redirects
-  are not followed, and non-2xx responses record `:failed`.
-- Effects are extensible: `Inquirex::Actions.register(:save_record, MyEffect)`
-  gives a new verb both DSL and JSON wire support.
+- The `mail` gem is a soft dependency, needed only when a message is built (Rails hosts already have it via ActionMailer).
+- **`webhook url:`** POSTs `{"answers": {...}}` as JSON to a static URL. The URL's host must be covered by `allowed_domains`, declared at the top of the definition so the flow's egress surface is auditable at a glance. The check runs inside `Definition.new` — a JSON definition whose webhook URL was tampered with fails at *rehydration*, before anything executes. Also enforced: https only (plain http just for localhost), no userinfo, no `{{field}}` templates in URLs (the destination must be static), redirects are not followed, and non-2xx responses record `:failed`.
+- Effects are extensible: `Inquirex::Actions.register(:save_record, MyEffect)` gives a new verb both DSL and JSON wire support.
 
 ## Serialization
 
@@ -597,11 +563,8 @@ Serialized structure includes:
 - Steps and transitions
 - Rule AST payloads
 - Widget hints
-- Post-completion actions (`actions`) with their rules and effects; `run`
-  blocks are stripped, and an action left with no serializable effects is
-  omitted entirely
-- The `allowed_domains` egress allowlist, re-enforced against webhook URLs
-  every time a definition is rehydrated
+- Post-completion actions (`actions`) with their rules and effects; `run` blocks are stripped, and an action left with no serializable effects is omitted entirely
+- The `allowed_domains` egress allowlist, re-enforced against webhook URLs every time a definition is rehydrated
 
 Important serialization details:
 

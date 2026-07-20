@@ -22,6 +22,7 @@ lint:
 # Lint and reformat files (-a) — pass -A as an argument
 format *args:
     {{ rbenv }} rubocop -a {{ args }}
+    /usr/bin/find . -name '*.md' -exec mdformat --wrap no {} \; -print
 
 # Run all the tests
 test *args: 
