@@ -31,7 +31,7 @@ It provides a rich DSL for creating dynamic user intake forms, with complexity r
 >
 > For technically inclined, Inquirex turns user forms into a directed graph, where nodes are either questions or statements (or UI transitions), while edges are AST-based logical conditions that can be stacked and joined in arbitrarily complex ways, allowing you to move from one question to any other based on the previous answer. See the details below.
 
-***Don't want to deal with figuring it out? Head to [Qualified.At](https://qualified.at/onboarding) and walk through the demo onboarding form, that exists specifically to show you how quickly you can have the same conceptually on your site, tailored to YOUR users.***
+***Don't want to deal with figuring it out? Head to [Qualified.At](https://qualified.at) and walk through the demo onboarding form, that exists specifically to show you how quickly you can have the same conceptually on your site, tailored to YOUR users.***
 
 ## Summary
 
