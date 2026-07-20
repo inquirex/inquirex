@@ -30,6 +30,12 @@ module Inquirex
 
       # Deserializes a rule from a plain Hash (e.g. parsed from JSON).
       #
+      # @example Rehydrate a rule from its wire format
+      #   rule = Inquirex::Rules::Base.from_h(
+      #     "op" => "equals", "field" => "filing_status", "value" => "single"
+      #   )
+      #   rule.evaluate(filing_status: "single") # => true
+      #
       # @param hash [Hash] rule hash with string or symbol keys
       # @return [Rules::Base] the deserialized rule
       # @raise [Inquirex::Errors::SerializationError] on unknown operator

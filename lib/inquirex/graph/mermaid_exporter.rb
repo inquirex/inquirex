@@ -1,10 +1,12 @@
 # frozen_string_literal: true
 
 module Inquirex
+  # Namespace for flow graph export utilities (Mermaid, ...).
   module Graph
     # Exports a flow Definition to Mermaid flowchart syntax for visualization.
     # Node labels show verb + truncated question/text; edges show condition labels.
     class MermaidExporter
+      # Maximum characters of a node label before it is truncated with "...".
       MAX_LABEL_LENGTH = 50
 
       attr_reader :definition

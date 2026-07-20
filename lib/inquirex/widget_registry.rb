@@ -10,6 +10,7 @@ module Inquirex
   # Adapters (TTY, JS, Rails) use this to pick an appropriate renderer when
   # the DSL author has not specified an explicit `widget` hint.
   module WidgetRegistry
+    # Every widget type an adapter may be asked to render, across all contexts.
     WIDGET_TYPES = %i[
       text_input
       textarea

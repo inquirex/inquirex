@@ -20,9 +20,20 @@ module Inquirex
     # The mail gem is a soft dependency, required only when a message is
     # actually built. Rails hosts always have it (ActionMailer depends on it).
     class SendEmail < Base
+      # Scalar header fields rendered verbatim via Template.render_text in #to_mail and #to_h.
       SCALAR_FIELDS = %i[to from cc bcc reply_to subject].freeze
 
-      attr_reader(*SCALAR_FIELDS, :text, :html, :headers)
+      # @return [String] required recipient / subject templates ({{field}} placeholders allowed)
+      attr_reader :to, :subject
+
+      # @return [String, nil] optional address templates ({{field}} placeholders allowed)
+      attr_reader :from, :cc, :bcc, :reply_to
+
+      # @return [String, nil] body template, inlined at definition time when { file: } was given
+      attr_reader :text, :html
+
+      # @return [Hash{String => String}] extra headers (values support {{field}})
+      attr_reader :headers
 
       # @param to [String] recipient template (required)
       # @param subject [String] subject template (required)
@@ -47,6 +58,10 @@ module Inquirex
       end
 
       # Builds the message and appends it to the outbox.
+      #
+      # @param answers [Answers] completed answers
+      # @param outbox [Outbox] receives the built Mail::Message
+      # @return [void]
       def call(answers, outbox)
         outbox.add_message(to_mail(answers))
       end

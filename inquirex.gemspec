@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.email = ["kigster@gmail.com"]
 
   spec.summary = "A declarative, rules-driven questionnaire engine for building conditionally-branching intake forms, qualification wizards, and surveys in pure Ruby."
-  spec.description = "Inquirex lets you define multi-step questionnaires as directed graphs with conditional branching, using a conversational DSL (ask, say, mention) and an AST-based rule system (contains, equals, greater_than, all, any). The engine walks the graph, collects structured answers, and serializes everything to JSON — making it the ideal backbone for cross-platform intake forms where the frontend is a chat widget, a terminal, or a mobile app. Framework-agnostic, zero dependencies, thread-safe immutable definitions."
+  spec.description = "Inquirex lets you define multi-step questionnaires as directed graphs with conditional branching, using a conversational DSL (ask, say, mention) and an AST-based rule system (contains, equals, greater_than, all, any). The engine walks the graph, collects structured answers, and serializes everything to JSON — making it the ideal backbone for cross-platform intake forms where the frontend is a chat widget, a terminal, or a mobile app. Framework-agnostic, no third-party dependencies, thread-safe immutable definitions."
   spec.homepage = "https://github.com/inquirex/inquirex"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 4.0.0"
@@ -30,6 +30,9 @@ Gem::Specification.new do |spec|
   end
   spec.require_paths = ["lib"]
 
-  # Zero required runtime dependencies — intentional.
+  # No third-party runtime dependencies — intentional. ostruct is a stdlib
+  # bundled gem (Ruby >= 3.5) and must be declared to be requirable;
+  # CompletionMetadata builds on it.
   # dry-types may be added as an optional enhancement in the future.
+  spec.add_dependency "ostruct", "~> 0.6"
 end

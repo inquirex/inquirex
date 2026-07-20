@@ -14,6 +14,9 @@ require "bundler/setup"
 require "inquirex"
 
 DEFINITION = Inquirex.define id: "lead-intake", version: "1.0.0" do
+  # Egress allowlist: webhook effects may only POST to these hosts.
+  allowed_domains "*.agentica.group"
+
   meta title: "Lead Intake", subtitle: "Tell us about your project"
   start :name
 
@@ -60,6 +63,14 @@ DEFINITION = Inquirex.define id: "lead-intake", version: "1.0.0" do
       subject: "New lead: {{name}} (budget {{budget}})",
       html: "{{answers_summary}}"
     run { |answers, _outbox| puts ">> run{} saw budget: #{answers.budget}" }
+  end
+
+  # Webhook to an allowed_domains host. Gated by an always-false rule so this
+  # example runs offline — it records :skipped instead of POSTing. Drop the
+  # if: to exercise it for real.
+  action :crm_push, if: equals(:name, "__network_demo__") do
+    webhook url: "https://hooks.agentica.group/inquirex",
+      headers: { "X-Api-Key" => "demo" }
   end
 end
 

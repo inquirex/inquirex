@@ -97,3 +97,10 @@ RSpec/MultipleExpectations:
 
 Style/SingleArgumentDig:
   Enabled: false
+
+# CompletionMetadata is deliberately an OpenStruct: an open, dot-accessible
+# bag of renderer-supplied members.
+Style/OpenStructUse:
+  Exclude:
+    - "lib/inquirex/completion_metadata.rb"
+    - "spec/inquirex/completion_metadata_spec.rb"

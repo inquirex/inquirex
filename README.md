@@ -466,6 +466,33 @@ Pass a custom adapter to the engine:
 engine = Inquirex::Engine.new(definition, validator: my_validator)
 ```
 
+## Completion Metadata
+
+When a flow finishes, the engine guarantees a `CompletionMetadata` — an
+OpenStruct describing how the answers were collected. Only `engine` and
+`engine_version` are required members; rendering front-ends attach richer
+environment details from an `after_completion` hook:
+
+```ruby
+engine.after_completion do |eng|
+  eng.completion_metadata = Inquirex::CompletionMetadata.new(
+    engine:         "inquirex-tty",
+    engine_version: Inquirex::TTY::VERSION,
+    uname:          OpenStruct.new(Etc.uname),
+    user:           Etc.getlogin,
+    terminal:       ENV["LC_TERMINAL"] || ENV["TERM_PROGRAM"] || "Unknown"
+  )
+end
+```
+
+If no hook supplies one, the engine stamps the minimal core version
+(`engine: "inquirex"`, `engine_version: Inquirex::VERSION`). The metadata
+persists through `Engine#to_state` / `Engine.from_state`, and
+`engine.answers_with_metadata` merges it into the answers hash under
+`:completion_metadata` — which also makes it available to post-completion
+actions: webhook payloads carry it, and email templates can interpolate
+`{{completion_metadata.engine}}`.
+
 ## Post-Completion Actions
 
 After all questions are answered, `action` declarations run server-side with
@@ -476,6 +503,8 @@ how and when to send.
 
 ```ruby
 Inquirex.define id: "tax-intake-2025" do
+  allowed_domains "*.agentica.group"   # egress allowlist for webhook effects
+
   # ... ask steps ...
 
   action :client_receipt, if: not_empty(:email) do
@@ -500,6 +529,11 @@ Inquirex.define id: "tax-intake-2025" do
                subject: "New lead: {{name}} <{{email}}>",
                html: "{{answers_summary}}"
     run { |answers, outbox| Metrics.count(:lead, answers.to_flat_h) }
+  end
+
+  action :crm_push do
+    webhook url: "https://hooks.agentica.group/inquirex",
+            headers: { "X-Api-Key" => "..." }
   end
 end
 ```
@@ -535,7 +569,15 @@ Key semantics:
 - **Images** in HTML bodies must be external URLs; attachments are unsupported.
 - The `mail` gem is a soft dependency, needed only when a message is built
   (Rails hosts already have it via ActionMailer).
-- Effects are extensible: `Inquirex::Actions.register(:webhook, MyEffect)`
+- **`webhook url:`** POSTs `{"answers": {...}}` as JSON to a static URL. The
+  URL's host must be covered by `allowed_domains`, declared at the top of the
+  definition so the flow's egress surface is auditable at a glance. The check
+  runs inside `Definition.new` — a JSON definition whose webhook URL was
+  tampered with fails at *rehydration*, before anything executes. Also
+  enforced: https only (plain http just for localhost), no userinfo, no
+  `{{field}}` templates in URLs (the destination must be static), redirects
+  are not followed, and non-2xx responses record `:failed`.
+- Effects are extensible: `Inquirex::Actions.register(:save_record, MyEffect)`
   gives a new verb both DSL and JSON wire support.
 
 ## Serialization
@@ -558,6 +600,8 @@ Serialized structure includes:
 - Post-completion actions (`actions`) with their rules and effects; `run`
   blocks are stripped, and an action left with no serializable effects is
   omitted entirely
+- The `allowed_domains` egress allowlist, re-enforced against webhook URLs
+  every time a definition is rehydrated
 
 Important serialization details:
 

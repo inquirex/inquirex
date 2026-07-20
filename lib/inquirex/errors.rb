@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module Inquirex
+  # Namespace for all Inquirex exception classes.
   module Errors
     # Base exception for all Inquirex errors.
     class Error < StandardError; end

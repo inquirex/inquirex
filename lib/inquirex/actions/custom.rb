@@ -16,6 +16,11 @@ module Inquirex
         freeze
       end
 
+      # Invokes the wrapped block with the collected answers and the outbox.
+      #
+      # @param answers [Answers] completed answers
+      # @param outbox [Outbox] collector for messages the block may build
+      # @return [Object] whatever the block returns (recorded, not interpreted)
       def call(answers, outbox)
         @block.call(answers, outbox)
       end

@@ -27,7 +27,9 @@ module Inquirex
   class Node
     # Valid DSL verbs and which ones collect input from the user.
     VERBS = %i[ask say header btw warning confirm].freeze
+    # Verbs that collect input from the user.
     COLLECTING_VERBS = %i[ask confirm].freeze
+    # Verbs that only display content and auto-advance.
     DISPLAY_VERBS = %i[say header btw warning].freeze
 
     # Valid data types for :ask steps.

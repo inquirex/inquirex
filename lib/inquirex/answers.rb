@@ -84,6 +84,8 @@ module Inquirex
     end
 
     # Number of top-level answer keys.
+    #
+    # @return [Integer]
     def size
       @data.size
     end
@@ -107,6 +109,7 @@ module Inquirex
       Answers.new(@data.merge(other_data))
     end
 
+    # @return [String] debug representation including the underlying hash
     def inspect
       "#<Inquirex::Answers #{@data.inspect}>"
     end

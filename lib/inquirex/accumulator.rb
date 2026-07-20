@@ -8,9 +8,21 @@ module Inquirex
   # @attr_reader name [Symbol] accumulator identifier (e.g. :price)
   # @attr_reader type [Symbol] one of Node::TYPES (typically :currency, :integer, :decimal)
   # @attr_reader default [Numeric] starting value (default: 0)
+  #
+  # @example Declare a running price total and contribute to it from a step
+  #   Inquirex.define do
+  #     accumulator :price, type: :currency, default: 0
+  #     ask :dependents do
+  #       type :integer
+  #       accumulate :price, per_unit: 50
+  #     end
+  #   end
   class Accumulator
     attr_reader :name, :type, :default
 
+    # @param name [Symbol, String] accumulator identifier
+    # @param type [Symbol, String] value type, one of Node::TYPES
+    # @param default [Numeric] starting value before any contributions
     def initialize(name:, type: :decimal, default: 0)
       @name = name.to_sym
       @type = type.to_sym
@@ -18,10 +30,19 @@ module Inquirex
       freeze
     end
 
+    # Serializes the accumulator to its wire format. The name is omitted —
+    # Definition#to_h keys the accumulators map by name.
+    #
+    # @return [Hash{String => Object}] e.g. { "type" => "currency", "default" => 0 }
     def to_h
       { "type" => @type.to_s, "default" => @default }
     end
 
+    # Deserializes an Accumulator from its wire format.
+    #
+    # @param name [Symbol, String] accumulator identifier (the map key)
+    # @param hash [Hash] type/default attributes (string or symbol keys)
+    # @return [Accumulator]
     def self.from_h(name, hash)
       new(
         name:    name,
@@ -44,10 +65,15 @@ module Inquirex
   # @attr_reader shape [Symbol] one of :lookup, :per_selection, :per_unit, :flat
   # @attr_reader payload [Object] shape-specific data (Hash or Numeric)
   class Accumulation
+    # Valid accumulation shapes; exactly one must be declared per entry.
     SHAPES = %i[lookup per_selection per_unit flat].freeze
 
     attr_reader :target, :shape, :payload
 
+    # @param target [Symbol, String] accumulator name to contribute to
+    # @param shape [Symbol, String] one of SHAPES
+    # @param payload [Hash, Numeric] shape-specific data (Hash for :lookup/:per_selection)
+    # @raise [Errors::DefinitionError] when shape is not one of SHAPES
     def initialize(target:, shape:, payload:)
       @target = target.to_sym
       @shape = shape.to_sym
@@ -73,6 +99,9 @@ module Inquirex
       end
     end
 
+    # Serializes to the single-key shape Hash that .from_h accepts.
+    #
+    # @return [Hash{String => Object}] e.g. { "per_unit" => 50 }
     def to_h
       { @shape.to_s => serialize_payload }
     end

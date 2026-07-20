@@ -12,6 +12,15 @@ module Inquirex
   class Engine
     attr_reader :definition, :answers, :history, :current_step_id, :totals
 
+    # Metadata describing how and where the flow was completed. Rendering
+    # front-ends (TTY, web, chat widget) attach a rich version from an
+    # after_completion hook; when no hook provides one, the engine stamps a
+    # minimal core version the moment the flow finishes. Only :engine and
+    # :engine_version are required members; everything else is free-form.
+    #
+    # @return [CompletionMetadata, nil] nil until the flow finishes
+    attr_accessor :completion_metadata
+
     # @param definition [Definition] the flow to run
     # @param validator [Validation::Adapter] optional (default: NullAdapter)
     def initialize(definition, validator: Validation::NullAdapter.new)
@@ -21,6 +30,8 @@ module Inquirex
       @current_step_id = definition.start_step_id
       @validator = validator
       @totals = init_totals
+      @completion_metadata = nil
+      @after_completion_hooks = []
       @history << @current_step_id
       skip_display_steps_if_needed
     end
@@ -101,16 +112,54 @@ module Inquirex
       @answers
     end
 
+    # Registers a hook to run when the flow finishes. The block receives the
+    # engine; front-ends typically use it to attach a rich
+    # completion_metadata (host, user, ips, terminal, ...). Optional — after
+    # all hooks run, the engine fills in a minimal CompletionMetadata when
+    # none of them provided one. Registering on an already-finished engine
+    # invokes the block immediately.
+    #
+    # @example Stamp renderer-specific completion metadata
+    #   engine.after_completion do |eng|
+    #     eng.completion_metadata = Inquirex::CompletionMetadata.new(
+    #       engine: "inquirex-tty", engine_version: "0.5.0", hostname: Socket.gethostname
+    #     )
+    #   end
+    #
+    # @yield [Engine] the engine, at completion time
+    # @return [Engine] self
+    def after_completion(&block)
+      raise ArgumentError, "after_completion requires a block" unless block
+
+      @after_completion_hooks << block
+      if finished?
+        block.call(self)
+        ensure_completion_metadata
+      end
+      self
+    end
+
     # Serializable state snapshot for persistence or resumption.
     #
     # @return [Hash]
     def to_state
       {
-        current_step_id: @current_step_id,
-        answers:         @answers,
-        history:         @history,
-        totals:          @totals
+        current_step_id:     @current_step_id,
+        answers:             @answers,
+        history:             @history,
+        totals:              @totals,
+        completion_metadata: @completion_metadata&.to_h
       }
+    end
+
+    # The collected answers with the completion metadata (when a renderer
+    # attached one) merged in under the :completion_metadata key.
+    #
+    # @return [Hash]
+    def answers_with_metadata
+      return @answers if @completion_metadata.nil?
+
+      @answers.merge(completion_metadata: @completion_metadata.to_h)
     end
 
     # Rebuilds an Engine from a previously saved state.
@@ -135,6 +184,8 @@ module Inquirex
       @answers = state[:answers] || {}
       @history = state[:history] || []
       @totals = state[:totals] || init_totals
+      @completion_metadata = CompletionMetadata.from_h(state[:completion_metadata])
+      @after_completion_hooks = []
     end
 
     def init_totals
@@ -154,10 +205,25 @@ module Inquirex
       node = @definition.step(@current_step_id)
       next_id = node.next_step_id(@answers)
       @current_step_id = next_id
-      return unless next_id
+      return run_after_completion_hooks unless next_id
 
       @history << next_id
       skip_if_needed
+    end
+
+    # Fires the moment the flow finishes: runs registered after_completion
+    # hooks in order, then guarantees completion_metadata exists — hooks may
+    # attach a rich version; absent that, a minimal core-stamped one is used.
+    def run_after_completion_hooks
+      @after_completion_hooks.each { |hook| hook.call(self) }
+      ensure_completion_metadata
+      nil
+    end
+
+    def ensure_completion_metadata
+      return if @completion_metadata
+
+      @completion_metadata = CompletionMetadata.new(engine: "inquirex", engine_version: VERSION)
     end
 
     # Auto-skips the current step if its skip_if rule is satisfied.
