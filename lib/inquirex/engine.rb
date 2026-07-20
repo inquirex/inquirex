@@ -21,6 +21,14 @@ module Inquirex
     # @return [CompletionMetadata, nil] nil until the flow finishes
     attr_accessor :completion_metadata
 
+    # Exceptions raised by after_completion hooks, in the order they were
+    # raised. Hooks are isolated from one another, so a raising hook is
+    # recorded here rather than propagated — callers that care can inspect
+    # this after the flow finishes. Empty when every hook succeeded.
+    #
+    # @return [Array<StandardError>]
+    attr_reader :completion_hook_errors
+
     # @param definition [Definition] the flow to run
     # @param validator [Validation::Adapter] optional (default: NullAdapter)
     def initialize(definition, validator: Validation::NullAdapter.new)
@@ -32,6 +40,7 @@ module Inquirex
       @totals = init_totals
       @completion_metadata = nil
       @after_completion_hooks = []
+      @completion_hook_errors = []
       @history << @current_step_id
       skip_display_steps_if_needed
     end
@@ -119,6 +128,12 @@ module Inquirex
     # none of them provided one. Registering on an already-finished engine
     # invokes the block immediately.
     #
+    # Any number of hooks may be registered; they run in registration order.
+    # Each is isolated from the others — a hook that raises a StandardError
+    # has it recorded in #completion_hook_errors, and the remaining hooks
+    # still run. Non-StandardError exceptions (Interrupt, SignalException)
+    # propagate, as they should.
+    #
     # @example Stamp renderer-specific completion metadata
     #   engine.after_completion do |eng|
     #     eng.completion_metadata = Inquirex::CompletionMetadata.new(
@@ -133,7 +148,7 @@ module Inquirex
 
       @after_completion_hooks << block
       if finished?
-        block.call(self)
+        invoke_completion_hook(block)
         ensure_completion_metadata
       end
       self
@@ -186,6 +201,7 @@ module Inquirex
       @totals = state[:totals] || init_totals
       @completion_metadata = CompletionMetadata.from_h(state[:completion_metadata])
       @after_completion_hooks = []
+      @completion_hook_errors = []
     end
 
     def init_totals
@@ -212,12 +228,22 @@ module Inquirex
     end
 
     # Fires the moment the flow finishes: runs registered after_completion
-    # hooks in order, then guarantees completion_metadata exists — hooks may
-    # attach a rich version; absent that, a minimal core-stamped one is used.
+    # hooks in registration order, then guarantees completion_metadata exists
+    # — hooks may attach a rich version; absent that (including when the hook
+    # meant to supply it raised), a minimal core-stamped one is used.
     def run_after_completion_hooks
-      @after_completion_hooks.each { |hook| hook.call(self) }
+      @after_completion_hooks.each { |hook| invoke_completion_hook(hook) }
       ensure_completion_metadata
       nil
+    end
+
+    # Runs one hook in isolation. A StandardError is recorded rather than
+    # propagated so that one misbehaving hook cannot silently cancel the
+    # hooks registered after it, nor abort the completion of the flow itself.
+    def invoke_completion_hook(hook)
+      hook.call(self)
+    rescue StandardError => e
+      @completion_hook_errors << e
     end
 
     def ensure_completion_metadata
