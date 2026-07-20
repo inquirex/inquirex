@@ -21,6 +21,15 @@ module Inquirex
     # @return [CompletionMetadata, nil] nil until the flow finishes
     attr_accessor :completion_metadata
 
+    # Answer suggestions produced by prefill! for multi-select steps, keyed by
+    # step id. A suggestion pre-populates the step's choices in a renderer but
+    # — unlike an answer — never satisfies skip_if rules: multi-select
+    # extraction is treated as a hint the user confirms and may extend, not a
+    # deterministic fact. Cleared per step once the user answers it.
+    #
+    # @return [Hash{Symbol => Array}]
+    attr_reader :suggestions
+
     # Exceptions raised by after_completion hooks, in the order they were
     # raised. Hooks are isolated from one another, so a raising hook is
     # recorded here rather than propagated — callers that care can inspect
@@ -41,6 +50,7 @@ module Inquirex
       @completion_metadata = nil
       @after_completion_hooks = []
       @completion_hook_errors = []
+      @suggestions = {}
       @history << @current_step_id
       skip_display_steps_if_needed
     end
@@ -81,6 +91,7 @@ module Inquirex
       raise Errors::ValidationError, "Validation failed: #{result.errors.join(", ")}" unless result.valid?
 
       @answers[@current_step_id] = value
+      @suggestions.delete(@current_step_id)
       apply_accumulations(current_step, value)
       advance_step
     end
@@ -115,10 +126,26 @@ module Inquirex
         next if value.respond_to?(:empty?) && value.empty?
 
         sym = key.to_sym
-        @answers[sym] = value unless @answers.key?(sym)
+        if multi_select_step?(sym)
+          # Multi-select extraction is a hint, not a fact: the user may have
+          # more selections in mind than the text revealed. Record it as a
+          # suggestion so renderers pre-check the choices while the question
+          # is still asked; skip_if rules see no answer and do not fire.
+          @suggestions[sym] = Array(value) unless @answers.key?(sym)
+        else
+          @answers[sym] = value unless @answers.key?(sym)
+        end
       end
       skip_if_needed unless finished?
       @answers
+    end
+
+    # The prefill suggestion for a step, or nil when none was recorded.
+    #
+    # @param step_id [Symbol, String] step id
+    # @return [Array, nil] suggested selections for a multi-select step
+    def suggestion_for(step_id)
+      @suggestions[step_id.to_sym]
     end
 
     # Registers a hook to run when the flow finishes. The block receives the
@@ -163,6 +190,7 @@ module Inquirex
         answers:             @answers,
         history:             @history,
         totals:              @totals,
+        suggestions:         @suggestions,
         completion_metadata: @completion_metadata&.to_h
       }
     end
@@ -202,6 +230,16 @@ module Inquirex
       @completion_metadata = CompletionMetadata.from_h(state[:completion_metadata])
       @after_completion_hooks = []
       @completion_hook_errors = []
+      @suggestions = state[:suggestions] || {}
+    end
+
+    # Whether +step_id+ names a multi-select step in the definition. Unknown
+    # ids (e.g. an extract schema field that matches no step) are not.
+    #
+    # @param step_id [Symbol]
+    # @return [Boolean]
+    def multi_select_step?(step_id)
+      @definition.step_ids.include?(step_id) && @definition.step(step_id).type == :multi_enum
     end
 
     def init_totals
