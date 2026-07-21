@@ -25,6 +25,10 @@ module Inquirex
     # Use Engine#advance for non-collecting steps.
     class NonCollectingStepError < EngineError; end
 
+    # Raised when Engine#skip is called on a step that is required (the default).
+    # Only steps declared with `required false` may be skipped by the user.
+    class RequiredStepError < EngineError; end
+
     # Raised when serializing or deserializing a Definition to/from JSON fails.
     class SerializationError < Error; end
 
