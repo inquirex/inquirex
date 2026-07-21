@@ -17,6 +17,7 @@ module Inquirex
         @transitions = []
         @skip_if = nil
         @default = nil
+        @required = true
         @compute = nil
         @widget_hints = {}
         @accumulations = []
@@ -114,10 +115,31 @@ module Inquirex
 
       # Sets a default value for this step (shown pre-filled; user can change it).
       # Can be a static value or a proc receiving collected answers so far.
+      # On a `required false` step the default is also what Engine#skip records
+      # into the answers when the user skips the question.
       #
       # @param value [Object, Proc]
       def default(value = nil, &block)
         @default = block || value
+      end
+
+      # Declares whether the user must answer this step (true by default).
+      # `required false` marks the question as optional: renderers show a small
+      # Skip control, and Engine#skip records the step's default (when one is
+      # declared) into the answers while marking the step as skipped.
+      #
+      # @example An optional question with a skip default
+      #   ask :dependents do
+      #     type :integer
+      #     question "How many dependents?"
+      #     required false
+      #     default 0
+      #     transition to: :done
+      #   end
+      #
+      # @param value [Boolean] false to make the step skippable
+      def required(value = true)
+        @required = value
       end
 
       # Registers a compute block: auto-calculates a value from answers, not shown to user.
@@ -143,6 +165,7 @@ module Inquirex
           transitions:   @transitions,
           skip_if:       @skip_if,
           default:       @default,
+          required:      @required,
           widget_hints:  resolve_widget_hints,
           accumulations: @accumulations
         )
