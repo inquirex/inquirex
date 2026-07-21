@@ -173,6 +173,7 @@ engine.finished? # => true
 - `text "..."` for display steps
 - `options [...]` or `options key: "Label"` for enum-style inputs
 - `default value` or `default { |answers| ... }`
+- `required false` (marks a question optional — renderers show a Skip control; see [Optional Questions and Skipping](#optional-questions-and-skipping))
 - `skip_if rule`
 - `transition to: :next_step, if_rule: rule, requires_server: false`
 - `compute { |answers| ... }` (accepted by the DSL as a server-side hook; currently omitted from runtime JSON)
@@ -432,6 +433,7 @@ Behavior:
 
 - Use `answer(value)` on collecting steps
 - Use `advance` on display steps
+- Use `skip` on optional (`required false`) collecting steps the user declines (see [Optional Questions and Skipping](#optional-questions-and-skipping))
 - Use `finished?` to detect completion
 - Use `total(:price)` / `totals` to read running totals
 - Use `to_state` / `.from_state` for persistence/resume (totals included)
@@ -461,6 +463,61 @@ Pass a custom adapter to the engine:
 ```ruby
 engine = Inquirex::Engine.new(definition, validator: my_validator)
 ```
+
+## Optional Questions and Skipping
+
+Every collecting step is **required by default** — the flow will not advance without an answer. Declare `required false` to make a question optional: renderers (the JS widget, the TTY adapter, the qualified.at wizard) show a small **Skip** control next to the input, and a user who declines the question moves on via `Engine#skip`.
+
+```ruby
+ask :dependents do
+  type :integer
+  question "How many dependents?"
+  required false        # renders a Skip control
+  default 0             # what a skip records into the answers
+  transition to: :adult_path, if_rule: greater_than(:dependents, 0)
+  transition to: :done
+end
+```
+
+When the user skips:
+
+- **With a `default`** — the default is recorded into `answers[:dependents]` and contributes to [accumulators](#accumulators) exactly as if the user had submitted it. Transition rules evaluate against the default, so branching stays deterministic.
+- **Without a `default`** — no answers entry is written at all (not even `nil`). Rules read a missing key as `nil`, so branching behaves as if the question were unanswered.
+- Either way the step id lands in `engine.skipped`, which is how a defaulted-by-skip value is **distinguished from an answer the user actually provided**:
+
+```ruby
+engine.skip                     # user pressed Skip on :dependents
+engine.answers[:dependents]     # => 0 (the default)
+engine.skipped                  # => [:dependents]
+engine.skipped?(:dependents)    # => true
+```
+
+Guard rails:
+
+- `skip` on a **required** step raises `Errors::RequiredStepError`
+- `skip` on a **display** step raises `Errors::NonCollectingStepError` (use `advance`)
+- `skip` after the flow finished raises `Errors::AlreadyFinishedError`
+
+The `skipped` list survives `to_state` / `.from_state` round-trips (string keys from JSON are normalized back to symbols), and `engine.answers_with_metadata` merges it into the answers under `:skipped` — so post-completion actions (webhook payloads, email templates) and API consumers see which values were defaults-by-skip.
+
+On the wire, step JSON carries `"required": false` (omitted when true, like other defaults):
+
+```json
+{
+  "dependents": {
+    "verb": "ask",
+    "type": "integer",
+    "question": "How many dependents?",
+    "default": 0,
+    "required": false,
+    "transitions": [{ "to": "done" }]
+  }
+}
+```
+
+> [!NOTE]
+>
+> **`skip_if` is not the same thing.** A `skip_if` rule is *flow logic*: the definition elides the step from the path automatically, no default kicks in, and the step is **not** added to `engine.skipped` — it was never presented, so the user cannot have declined it. `Engine#skip` is a *user action* on a question that was presented. See [`docs/design/required-and-skip.md`](docs/design/required-and-skip.md) for the full design.
 
 ## Completion Metadata
 
@@ -571,6 +628,7 @@ Important serialization details:
 - Rule objects and accumulator shapes serialize and deserialize cleanly
 - Proc/lambda defaults are stripped from JSON
 - `requires_server: true` transition flag is preserved
+- `required: false` step flag is preserved (omitted when true, the default)
 - Snake-case theme keys are converted to camelCase on serialization to match the JS widget contract
 
 ## Answers Wrapper
@@ -615,6 +673,7 @@ Common exceptions under `Inquirex::Errors`:
 - `AlreadyFinishedError`
 - `ValidationError`
 - `NonCollectingStepError`
+- `RequiredStepError`
 
 ## Development
 
