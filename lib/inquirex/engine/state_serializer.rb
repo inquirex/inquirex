@@ -12,6 +12,7 @@ module Inquirex
         answers:             ->(v) { symbolize_answers(v) },
         totals:              ->(v) { symbolize_answers(v) },
         suggestions:         ->(v) { symbolize_answers(v) },
+        skipped:             ->(v) { Array(v).map { |e| e&.to_sym } },
         completion_metadata: ->(v) { symbolize_answers(v) }
       }.freeze
 
