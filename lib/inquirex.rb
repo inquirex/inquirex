@@ -111,16 +111,46 @@ module Inquirex
   # Evaluates a string of DSL code and returns the resulting definition.
   # Intended for loading flow definitions from files or stored text.
   #
+  # This is an `eval`. Since 0.7.0 the source is therefore validated against the
+  # flow-DSL allowlist ({SafeSource}) *before* anything is evaluated, so text
+  # from a database column, an upload, an LLM or a visual builder cannot execute
+  # arbitrary Ruby in the loading process.
+  #
+  # Pass `unsafe: true` only for source you control as code — a `.rb` file in
+  # your own repository, a heredoc in your own test, the fixture inquirex-tty
+  # was pointed at. It skips validation entirely, which is the only way to use
+  # `compute`, a block-form `default`, `fallback` or an action's `run`, all of
+  # which are arbitrary Ruby by definition and cannot be validated. If the text
+  # reached you over a network or out of a database, it is not trusted, whatever
+  # the flow needs.
+  #
+  # @example Customer-authored source (validated)
+  #   Inquirex.load_dsl(qualifier.flow_dsl)
+  #
+  # @example Your own file, with lambdas in it
+  #   Inquirex.load_dsl(File.read("flows/tax_intake.rb"), unsafe: true)
+  #
   # @param text [String] Ruby source containing Inquirex.define { ... }
+  # @param unsafe [Boolean] skip validation; only for source you wrote yourself
+  # @param max_bytes [Integer] override SafeSource's source-size ceiling
+  # @param max_depth [Integer] override SafeSource's nesting-depth ceiling
   # @return [Definition]
+  # @raise [Errors::UnsafeSourceError] when the source is outside the allowlist
   # @raise [Errors::DefinitionError] on syntax or evaluation errors
-  def self.load_dsl(text)
-    # rubocop:disable Security/Eval
-    eval(text, TOPLEVEL_BINDING.dup, "(dsl)", 1)
-    # rubocop:enable Security/Eval
-  rescue SyntaxError => e
-    raise Errors::DefinitionError, "DSL syntax error: #{e.message}"
-  rescue StandardError => e
-    raise Errors::DefinitionError, "DSL evaluation error: #{e.message}"
+  def self.load_dsl(text,
+    unsafe: false,
+    max_bytes: SafeSource.max_source_bytes,
+    max_depth: SafeSource.max_depth)
+    SafeSource.validate!(text, max_bytes:, max_depth:) unless unsafe
+
+    begin
+      # rubocop:disable Security/Eval
+      eval(text, TOPLEVEL_BINDING.dup, "(dsl)", 1)
+      # rubocop:enable Security/Eval
+    rescue SyntaxError => e
+      raise Errors::DefinitionError, "DSL syntax error: #{e.message}"
+    rescue StandardError => e
+      raise Errors::DefinitionError, "DSL evaluation error: #{e.message}"
+    end
   end
 end
