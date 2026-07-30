@@ -48,6 +48,9 @@ require_relative "inquirex/dsl/step_builder"
 require_relative "inquirex/dsl/flow_builder"
 require_relative "inquirex/dsl/action_builder"
 
+# Safe evaluation of DSL source (must follow the DSL, whose vocabulary it binds to)
+require_relative "inquirex/safe_source"
+
 # Engine
 require_relative "inquirex/engine/state_serializer"
 require_relative "inquirex/engine"
