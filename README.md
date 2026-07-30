@@ -51,6 +51,8 @@ This one is the core gem in the Inquirex ecosystem that focuses on:
 
 - JSON round-trip serialization for cross-platform clients
 
+- A default-deny AST allowlist (`SafeSource`) so DSL text written by someone you do not trust can be loaded without handing them an `eval` (see [Loading DSL Source](#loading-dsl-source))
+
 - A structured `Answers` wrapper and Mermaid graph export (provided by `inquirex-tty` gem's CLI)
 
 - In short:
@@ -172,10 +174,10 @@ engine.finished? # => true
 - `question "..."` for collecting steps
 - `text "..."` for display steps
 - `options [...]` or `options key: "Label"` for enum-style inputs
-- `default value` or `default { |answers| ... }`
+- `default value` or `default { |answers| ... }` (the block form needs `unsafe: true`, see [Loading DSL Source](#loading-dsl-source))
 - `skip_if rule`
 - `transition to: :next_step, if_rule: rule, requires_server: false`
-- `compute { |answers| ... }` (accepted by the DSL as a server-side hook; currently omitted from runtime JSON)
+- `compute { |answers| ... }` (server-side hook; omitted from runtime JSON, and needs `unsafe: true`)
 - `widget target: :desktop, type: :radio_group, columns: 2` (rendering hint for frontend adapters)
 - `accumulate :name, lookup:|per_selection:|per_unit:|flat:` (contribution to a named running total; see [Accumulators](#accumulators))
 - `price ...` (sugar for `accumulate :price, ...`)
@@ -573,6 +575,58 @@ Important serialization details:
 - `requires_server: true` transition flag is preserved
 - Snake-case theme keys are converted to camelCase on serialization to match the JS widget contract
 
+## Loading DSL Source
+
+`Inquirex.load_dsl(text)` turns DSL *source* into a `Definition`. It is an `eval`, so since 0.7.0 it validates the text against the flow-DSL allowlist before evaluating anything:
+
+```ruby
+# Text you did not write — a database column, an upload, an LLM, a builder's
+# "sync" button. Validated first; a payload raises before it can run.
+definition = Inquirex.load_dsl(qualifier.flow_dsl)
+
+# Source you control as code, e.g. a file in your own repository. Skips
+# validation, which is the only way to use compute / default { } / fallback /
+# an action's run — all of which are arbitrary Ruby by definition.
+definition = Inquirex.load_dsl(File.read("flows/tax_intake.rb"), unsafe: true)
+```
+
+`Inquirex::SafeSource` answers "would `load_dsl` accept this?" without evaluating, which is what you want when auditing what is already stored:
+
+```ruby
+Inquirex::SafeSource.safe?(source)     # => true / false
+Inquirex::SafeSource.validate(source)  # => ["line 4: `compute` is not available in safe mode: ..."]
+Inquirex::SafeSource.validate!(source) # raises Inquirex::Errors::UnsafeSourceError
+```
+
+How it decides: the source is parsed with Prism and walked by recursive descent against an *expected shape*. At each position only the node types the real DSL produces there are accepted — so a construct nobody anticipated is rejected by construction, unlike a blocklist of forbidden method names. Concretely, the document must be a single `Inquirex.define` block containing only the real vocabulary (`Inquirex::SafeSource::Vocabulary`, whose flow verbs come from `Node::VERBS`, step types from `Node::TYPES` and rules from `DSL::RuleHelpers`) with literal arguments. Constants, variables, interpolation, method calls, `require`, `begin/rescue`, backticks and Ruby blocks outside the DSL's own nested scopes are all violations.
+
+Deliberately not available in safe mode:
+
+- `compute`, a block-form `default`, `fallback` and an action's `run` — a Ruby block cannot be validated; a `compute` block is indistinguishable from a payload
+- the `webhook` action effect — its destination host is authorized by the `allowed_domains` declared in the *same untrusted document*, and plain `http` to localhost is permitted, so it is an egress and SSRF primitive granted to whoever authored the text
+- `send_email text:`/`html:` given as `{ file: "path" }` — the gem `File.read`s it at definition time, which would make a flow definition an arbitrary file-disclosure primitive with an attacker-chosen recipient
+
+Two ceilings apply, both measured against real flows (the largest is under 6 KB, the deepest legitimate construct 9 levels) and both overridable:
+
+```ruby
+Inquirex::SafeSource.max_source_bytes = 256 * 1024  # default 64 KiB
+Inquirex::SafeSource.max_depth = 32                 # default 24
+Inquirex::SafeSource.validate(source, max_bytes: 8_192, max_depth: 12) # or per call
+```
+
+Gems that extend the DSL register their own vocabulary at boot rather than forking the allowlist:
+
+```ruby
+V = Inquirex::SafeSource::Vocabulary
+V.register_scope(:llm_step, label: "an LLM step",
+  vocabulary: -> { Inquirex::LLM::DSL::StepBuilder.public_instance_methods(false) })
+V.allow(:flow, :clarify, positional: %i[symbol], block: :llm_step)
+V.allow(:llm_step, :prompt, positional: %i[literal])
+V.exclude(:llm_step, :fallback, "a Ruby block cannot be validated")
+```
+
+Until a gem does that, its verbs are rejected in safe mode — load such flows with `unsafe: true`, or register the vocabulary yourself. The `vocabulary:` binding is what lets `Vocabulary.undeclared_names(scope)` report DSL words that have no allowlist decision; this gem's own suite fails the build when that list is non-empty, and hosts can assert the same at boot.
+
 ## Answers Wrapper
 
 `Inquirex::Answers` provides structured answer access:
@@ -610,6 +664,7 @@ Output is `flowchart TD` syntax with:
 Common exceptions under `Inquirex::Errors`:
 
 - `DefinitionError`
+- `UnsafeSourceError` (a `DefinitionError`; carries `#violations`)
 - `UnknownStepError`
 - `SerializationError`
 - `AlreadyFinishedError`
