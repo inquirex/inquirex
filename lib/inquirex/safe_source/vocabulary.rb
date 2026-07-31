@@ -245,6 +245,14 @@ module Inquirex
           allow :step, :text, positional: %i[string]
           allow :step, :options, positional: %i[literal]
           allow :step, :default, positional: %i[literal]
+          # `required` is inert metadata: Node coerces it with `value ? true :
+          # false` and serializes it as `"required": false`. It reaches nothing
+          # outside the definition, and an author who can write the DSL text can
+          # already delete the question outright — strictly more powerful than
+          # marking it skippable — so it is allowed rather than excluded.
+          # `{ optional: :literal }` mirrors `required(value = true)`: both bare
+          # `required` and `required false` are real DSL.
+          allow :step, :required, positional: { optional: :literal }
           allow :step, :skip_if, positional: %i[rule]
           allow :step, :transition, keywords: TRANSITION_KEYWORDS
           allow :step,

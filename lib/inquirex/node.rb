@@ -23,6 +23,8 @@ module Inquirex
   # @attr_reader transitions [Array<Transition>] ordered conditional next-step edges
   # @attr_reader skip_if [Rules::Base, nil] rule to skip this step entirely
   # @attr_reader default [Object, nil] default value (pre-fill, user can change)
+  # @attr_reader required [Boolean] whether the user must answer (true by default);
+  #   `required false` steps render a Skip control and accept Engine#skip
   # @attr_reader widget_hints [Hash{Symbol => WidgetHint}, nil] rendering hints per target
   class Node
     # Valid DSL verbs and which ones collect input from the user.
@@ -48,6 +50,7 @@ module Inquirex
       :transitions,
       :skip_if,
       :default,
+      :required,
       :widget_hints,
       :accumulations
 
@@ -60,6 +63,7 @@ module Inquirex
       transitions: [],
       skip_if: nil,
       default: nil,
+      required: true,
       widget_hints: nil,
       accumulations: [])
       @id = id.to_sym
@@ -70,6 +74,7 @@ module Inquirex
       @transitions = transitions.freeze
       @skip_if = skip_if
       @default = default
+      @required = required ? true : false
       @widget_hints = widget_hints&.freeze
       @accumulations = accumulations.freeze
       extract_options(options)
@@ -84,6 +89,15 @@ module Inquirex
     # @return [Boolean] true if this step only displays content (no input)
     def display?
       DISPLAY_VERBS.include?(@verb)
+    end
+
+    # Whether the user must answer this step. True by default; steps declared
+    # with `required false` render a Skip control and accept Engine#skip.
+    # Only meaningful for collecting steps.
+    #
+    # @return [Boolean]
+    def required?
+      @required
     end
 
     # Returns the explicit widget hint for the given target, or nil.
@@ -135,6 +149,7 @@ module Inquirex
         hash["options"] = serialize_options if @options
         hash["skip_if"] = @skip_if.to_h if @skip_if
         hash["default"] = @default unless @default.nil? || @default.is_a?(Proc)
+        hash["required"] = false unless @required
       elsif @text
         hash["text"] = @text
       end
@@ -169,6 +184,8 @@ module Inquirex
       transitions_data = hash["transitions"] || hash[:transitions] || []
       skip_if_data = hash["skip_if"] || hash[:skip_if]
       default = hash["default"] || hash[:default]
+      # Fetch chain (not ||) so an explicit false survives; absent key means required.
+      required = hash.fetch("required") { hash.fetch(:required, true) }
       widget_data = hash["widget"] || hash[:widget]
       accumulate_data = hash["accumulate"] || hash[:accumulate]
 
@@ -188,6 +205,7 @@ module Inquirex
         transitions:,
         skip_if:,
         default:,
+        required:,
         widget_hints:,
         accumulations:
       )

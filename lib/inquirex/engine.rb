@@ -6,6 +6,7 @@ module Inquirex
   #
   # Collecting steps (ask, confirm): call engine.answer(value)
   # Display steps (say, header, btw, warning): call engine.advance
+  # Optional steps (declared `required false`): engine.skip is also allowed
   #
   # Validates each answer via an optional Validation::Adapter, then advances using
   # node transitions. Skips steps whose skip_if rule evaluates to true.
@@ -30,6 +31,15 @@ module Inquirex
     # @return [Hash{Symbol => Array}]
     attr_reader :suggestions
 
+    # Step ids the user explicitly skipped via #skip, in the order they were
+    # skipped. Distinguishes default-by-skip values in answers from values the
+    # user actually provided. Steps elided automatically by their skip_if rule
+    # are NOT listed here — they were never presented, so the user cannot have
+    # declined them.
+    #
+    # @return [Array<Symbol>]
+    attr_reader :skipped
+
     # Exceptions raised by after_completion hooks, in the order they were
     # raised. Hooks are isolated from one another, so a raising hook is
     # recorded here rather than propagated — callers that care can inspect
@@ -51,6 +61,7 @@ module Inquirex
       @after_completion_hooks = []
       @completion_hook_errors = []
       @suggestions = {}
+      @skipped = []
       @history << @current_step_id
       skip_display_steps_if_needed
     end
@@ -103,6 +114,53 @@ module Inquirex
       raise Errors::AlreadyFinishedError, "Flow is already finished" if finished?
 
       advance_step
+    end
+
+    # Skips the current optional collecting step at the user's request — the
+    # engine-side handler for a widget's Skip button. Only steps declared with
+    # `required false` may be skipped.
+    #
+    # When the step has a default, the default is recorded into the answers and
+    # contributes to accumulators exactly as if the user had submitted it; the
+    # step id lands in #skipped so consumers can tell the value apart from one
+    # the user actually provided. Without a default, no answers entry is
+    # written (rules read a missing key as nil, so branching is unaffected).
+    # Advances through transitions exactly like #answer.
+    #
+    # @example Optional question, skipped by the user
+    #   engine.current_step.required?  # => false
+    #   engine.skip
+    #   engine.answers[:dependents]    # => 0 (the step's default)
+    #   engine.skipped                 # => [:dependents]
+    #
+    # @return [void]
+    # @raise [Errors::AlreadyFinishedError] if the flow has already finished
+    # @raise [Errors::NonCollectingStepError] if the current step is a display verb
+    # @raise [Errors::RequiredStepError] if the current step is required
+    def skip
+      raise Errors::AlreadyFinishedError, "Flow is already finished" if finished?
+      raise Errors::NonCollectingStepError, "Step #{@current_step_id} is a display step; use #advance instead" \
+        unless current_step.collecting?
+      raise Errors::RequiredStepError, "Step #{@current_step_id} is required and cannot be skipped" \
+        if current_step.required?
+
+      node = current_step
+      default = resolve_default(node)
+      unless default.nil?
+        @answers[@current_step_id] = default
+        apply_accumulations(node, default)
+      end
+      @skipped << @current_step_id unless @skipped.include?(@current_step_id)
+      @suggestions.delete(@current_step_id)
+      advance_step
+    end
+
+    # Whether the user explicitly skipped the given step via #skip.
+    #
+    # @param step_id [Symbol, String] step id
+    # @return [Boolean]
+    def skipped?(step_id)
+      @skipped.include?(step_id.to_sym)
     end
 
     # Merges a hash of { step_id => value } into the top-level answers without
@@ -191,18 +249,23 @@ module Inquirex
         history:             @history,
         totals:              @totals,
         suggestions:         @suggestions,
+        skipped:             @skipped,
         completion_metadata: @completion_metadata&.to_h
       }
     end
 
     # The collected answers with the completion metadata (when a renderer
-    # attached one) merged in under the :completion_metadata key.
+    # attached one) merged in under the :completion_metadata key, and the
+    # user-skipped step ids (when any) under the :skipped key — so
+    # post-completion actions and API consumers can tell default-by-skip
+    # values apart from answers the user actually provided.
     #
     # @return [Hash]
     def answers_with_metadata
-      return @answers if @completion_metadata.nil?
-
-      @answers.merge(completion_metadata: @completion_metadata.to_h)
+      extra = {}
+      extra[:completion_metadata] = @completion_metadata.to_h if @completion_metadata
+      extra[:skipped] = @skipped.dup unless @skipped.empty?
+      extra.empty? ? @answers : @answers.merge(extra)
     end
 
     # Rebuilds an Engine from a previously saved state.
@@ -231,6 +294,7 @@ module Inquirex
       @after_completion_hooks = []
       @completion_hook_errors = []
       @suggestions = state[:suggestions] || {}
+      @skipped = state[:skipped] || []
     end
 
     # Whether +step_id+ names a multi-select step in the definition. Unknown
@@ -253,6 +317,19 @@ module Inquirex
         @totals[accumulation.target] ||= 0
         @totals[accumulation.target] += accumulation.contribution(answer)
       end
+    end
+
+    # The step's default as a concrete value: a Proc default (server-side only,
+    # stripped from JSON) is called with the answers collected so far, exactly
+    # as a renderer pre-filling the field would resolve it.
+    #
+    # @param node [Node]
+    # @return [Object, nil]
+    def resolve_default(node)
+      default = node.default
+      return default unless default.is_a?(Proc)
+
+      default.arity.zero? ? default.call : default.call(@answers)
     end
 
     def advance_step

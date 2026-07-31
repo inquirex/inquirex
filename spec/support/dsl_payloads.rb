@@ -87,6 +87,25 @@ module DslPayloads
           end
         end
       RUBY
+      "optional questions"       => <<~RUBY,
+        Inquirex.define do
+          start :dependents
+
+          ask :dependents do
+            type :integer
+            question "How many dependents?"
+            required false
+            default 0
+            transition to: :notes
+          end
+
+          ask :notes do
+            type :text
+            question "Anything else we should know?"
+            required
+          end
+        end
+      RUBY
       "every data type"          => <<~RUBY
         Inquirex.define do
           start :a_string
@@ -547,6 +566,8 @@ module DslPayloads
       "options non-literal"      => in_step("options Lead.pluck(:email)"),
       "hash double splat"        => in_step("options({ **{} })"),
       "interpolated hash key"    => in_step('options({ "x#{`id`}": "First" })'),
+      "required non-literal"     => in_step('required ENV["ALLOW_SKIP"]'),
+      "required two arguments"   => in_step("required true, false"),
       "unknown data type"        => in_step("type :sneaky"),
       "unknown accumulator type" => %(Inquirex.define do\n  accumulator :price, type: :bogus\n  start :a\nend\n),
       "interpolated type"        => in_step('type :"#{`id`}"'),
