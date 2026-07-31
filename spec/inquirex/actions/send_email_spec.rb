@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
-require "tmpdir"
-
+# The deprecated effect inside an `action` block. Kept working so definitions
+# hosts already store keep loading; new flows declare a top-level `send_email`
+# block instead (spec/inquirex/email_spec.rb).
 RSpec.describe Inquirex::Actions::SendEmail do
   subject(:effect) do
     described_class.new(
@@ -15,7 +16,6 @@ RSpec.describe Inquirex::Actions::SendEmail do
 
   let(:answers) { Inquirex::Answers.new(name: "Ada & Co", email: "ada@lovelace.io") }
 
-  it { is_expected.to be_serializable }
   it { is_expected.to be_frozen }
 
   describe "validation" do
@@ -80,14 +80,13 @@ RSpec.describe Inquirex::Actions::SendEmail do
     end
   end
 
+  # The `{ file: "path" }` body form was removed in 0.7.0: the gem File.read it
+  # at definition time, so a stored definition could name any path and mail its
+  # contents anywhere.
   describe "file: bodies" do
-    it "reads the template at definition time" do
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, "body.txt")
-        File.write(path, "Hello {{name}}")
-        effect = described_class.new(to: "a@b.c", subject: "s", text: { file: path })
-        expect(effect.text).to eq("Hello {{name}}")
-      end
+    it "are no longer accepted" do
+      expect { described_class.new(to: "a@b.c", subject: "s", text: { file: "/etc/passwd" }) }
+        .to raise_error(Inquirex::Errors::DefinitionError, /must be a template String/)
     end
   end
 

@@ -1,23 +1,24 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Example 03: Post-completion actions building emails into the outbox.
+# Example 03: the top-level `send_email` verb, Liquid placeholders in
+# user-facing text, and the advisory action list a completed flow hands back.
 #
-# The `action` verb runs server-side after the flow finishes. send_email
-# builds Mail::Message objects — nothing is delivered here; a host Rails app
-# would iterate answers.outbox and deliver via its own ActionMailer config.
+# Note what this script does NOT do: it never renders a template, never builds
+# a message and never sends anything — and it requires no Liquid, no Markdown
+# renderer and no mailer to run. The gem declares; the host renders. What you
+# see printed is exactly the JSON a host would enqueue.
 #
 # Run:
 #   bundle exec ruby examples/03_send_email_actions.rb
 
 require "bundler/setup"
 require "inquirex"
+require "json"
 
 DEFINITION = Inquirex.define id: "lead-intake", version: "1.0.0" do
-  # Egress allowlist: webhook effects may only POST to these hosts.
-  allowed_domains "*.agentica.group"
-
   meta title: "Lead Intake", subtitle: "Tell us about your project"
+  accumulator :price, type: :currency, default: 0
   start :name
 
   ask :name do
@@ -26,72 +27,68 @@ DEFINITION = Inquirex.define id: "lead-intake", version: "1.0.0" do
     transition to: :email
   end
 
+  # `{{ }}` is data the host renders at display time. `#{}` is Ruby and is
+  # rejected outright by Inquirex::SafeSource — that is the whole point of
+  # having the former.
   ask :email do
     type :email
-    question "Where can we reach you? (leave blank to skip the receipt)"
-    transition to: :budget
+    question "Thanks {{ answers.name }}, where can we reach you?"
+    transition to: :scope
   end
 
-  ask :budget do
-    type :currency
-    question "What is your approximate budget?"
+  ask :scope do
+    type :enum
+    question "How complex is the work?"
+    options simple: "Simple", involved: "Involved"
+    price simple: 250, involved: 900
+    transition to: :done
   end
 
-  # Sent only when the visitor left an email address.
-  action :client_receipt, if: not_empty(:email) do
-    send_email to:      "{{email}}",
-      from:    "forms@agentica.group",
-      subject: "Thanks {{name}} — we got your inquiry",
-      text:    <<~TEXT,
-        Hi {{name}},
-
-        We received your answers and will reply within one business day.
-
-        {{answers_summary}}
-      TEXT
-      html:    <<~HTML
-        <p>Hi {{name}},</p>
-        <p>We received your answers and will reply within one business day.</p>
-        {{answers_summary}}
-      HTML
+  say :done do
+    text "Your estimate starts at ${{ accumulators.price }}."
   end
 
-  # Always notify the site owner, and demonstrate the Ruby escape hatch.
-  action :admin_alert do
-    send_email to: "owner@agentica.group",
-      from: "forms@agentica.group",
-      subject: "New lead: {{name}} (budget {{budget}})",
-      html: "{{answers_summary}}"
-    run { |answers, _outbox| puts ">> run{} saw budget: #{answers.budget}" }
+  send_email do
+    to      "{{ answers.email }}"
+    from    "Qualified.At"
+    subject "Thank you for filling the form"
+    body_markdown <<~'TEXT'
+      Dear {{ answers.name }},
+
+      Thank you for filling out the form. Your total is
+      ${{ accumulators.price | round: 2 }} minimum.
+
+      — The team
+    TEXT
   end
 
-  # Webhook to an allowed_domains host. Gated by an always-false rule so this
-  # example runs offline — it records :skipped instead of POSTing. Drop the
-  # if: to exercise it for real.
-  action :crm_push, if: equals(:name, "__network_demo__") do
-    webhook url: "https://hooks.agentica.group/inquirex",
-      headers: { "X-Api-Key" => "demo" }
+  send_email do
+    to "owner@agentica.group"
+    subject "New lead: {{ answers.name }}"
+    body_markdown "**{{ answers.name }}** <{{ answers.email }}> — estimate ${{ accumulators.price }}."
   end
 end
 
-answers = Inquirex::Actions.run(
-  DEFINITION,
-  name:   "Ada Lovelace",
-  email:  "ada@lovelace.io",
-  budget: 12_500.00
-)
+engine = Inquirex::Engine.new(DEFINITION)
+engine.answer("Ada Lovelace")
+engine.answer("ada@lovelace.io")
+engine.answer("involved")
 
-puts "Built #{answers.outbox.size} message(s):"
-answers.outbox.each do |mail|
-  puts "-" * 60
-  puts "To:      #{mail.to.join(", ")}"
-  puts "Subject: #{mail.subject}"
-  puts "Parts:   #{mail.multipart? ? "text + html" : mail.content_type}"
-end
+puts "Question as stored (raw template):"
+puts "  #{DEFINITION.step(:email).question}"
+puts
+puts "Render context at this point — bind this in your template engine:"
+puts "  #{engine.render_context}"
 
-puts "-" * 60
-puts "Results: #{answers.outbox.results.map { |r| "#{r.action_id}=#{r.status}" }.join(", ")}"
+engine.advance # past the :done display step
 
-# The definition (rules and all) round-trips through JSON — run{} is stripped:
+puts
+puts "Flow finished: #{engine.finished?}"
+puts "on_complete_actions (what the host may choose to process):"
+puts JSON.pretty_generate(engine.on_complete_actions)
+
+puts
+puts "Authoring warnings: #{DEFINITION.template_warnings.inspect}"
+
 restored = Inquirex::Definition.from_json(DEFINITION.to_json)
-puts "Actions after JSON round-trip: #{restored.actions.map(&:id).inspect}"
+puts "Emails after JSON round-trip: #{restored.emails.map(&:subject).inspect}"

@@ -13,6 +13,7 @@ DSL_SIGNATURES = {
   rule:   ->(name) { Inquirex::DSL::RuleHelpers.instance_method(name) },
   flow:   ->(name) { Inquirex::DSL::FlowBuilder.instance_method(name) },
   step:   ->(name) { Inquirex::DSL::StepBuilder.instance_method(name) },
+  email:  ->(name) { Inquirex::DSL::EmailBuilder.instance_method(name) },
   # Effects are not builder methods: ActionBuilder resolves them through the
   # registry, so the keyword list lives on the effect's constructor.
   action: ->(name) { Inquirex::Actions.lookup(name).instance_method(:initialize) }
@@ -125,9 +126,36 @@ RSpec.describe Inquirex::SafeSource::Vocabulary do
       expect(reasons).to all(be_a(String).and(satisfy { |reason| reason.length > 20 }))
     end
 
-    it "excludes the arbitrary-Ruby blocks and the webhook effect" do
+    it "excludes the one construct that is arbitrary Ruby by definition" do
       expect(described_class.excluded_names(:step)).to include(:compute)
-      expect(described_class.excluded_names(:action)).to include(:run, :webhook)
+    end
+
+    # `run` and `webhook` used to be excluded here. They were deleted from the
+    # gem in 0.7.0 instead, which is a stronger guarantee than refusing them in
+    # safe mode: there is no `unsafe: true` that brings them back.
+    it "has nothing left to exclude in the deprecated action scope" do
+      expect(described_class.excluded_names(:action)).to be_empty
+      expect(Inquirex::Actions.types).to contain_exactly(:send_email)
+    end
+  end
+
+  describe "the top-level send_email verb" do
+    it "opens an email block taking no positional arguments" do
+      spec = described_class.spec_for(:flow, :send_email)
+
+      expect(spec.block).to eq(:email)
+      expect(spec.positional).to be_empty
+    end
+
+    it "allows exactly the setters EmailBuilder implements" do
+      expect(described_class.allowed_names(:email))
+        .to match_array(Inquirex::DSL::EmailBuilder.public_instance_methods(false) - described_class::PLUMBING)
+    end
+
+    it "accepts only static strings, so no Ruby can reach a template" do
+      kinds = described_class.allowed_names(:email).map { |name| described_class.spec_for(:email, name).positional }
+
+      expect(kinds).to all(eq(%i[string]))
     end
   end
 

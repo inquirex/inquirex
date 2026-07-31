@@ -4,26 +4,19 @@ module Inquirex
   module DSL
     # Builds an Actions::Action from an `action` DSL block. Every effect verb
     # registered in Inquirex::Actions (send_email, plus anything host gems
-    # register) is available as a method automatically; `run` wraps arbitrary
-    # Ruby in an Actions::Custom effect.
+    # register) is available as a method automatically.
     #
     #   action :admin_alert do
     #     send_email to: "admin@example.com", subject: "New lead: {{name}}",
     #                html: "{{answers_summary}}"
-    #     run { |answers, outbox| Metrics.count(:lead, answers.to_flat_h) }
     #   end
+    #
+    # @deprecated Along with the whole `action` verb — see
+    #   {FlowBuilder#action}. New flows declare a top-level `send_email` block
+    #   instead.
     class ActionBuilder
       def initialize
         @effects = []
-      end
-
-      # Escape hatch: arbitrary server-side Ruby. Stripped from JSON.
-      #
-      # @yield [answers, outbox]
-      def run(&block)
-        raise Errors::DefinitionError, "run requires a block" unless block
-
-        @effects << Actions::Custom.new(block)
       end
 
       # Registered effect verbs (send_email, ...) resolve dynamically so that

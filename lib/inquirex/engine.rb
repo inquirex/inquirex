@@ -268,6 +268,73 @@ module Inquirex
       extra.empty? ? @answers : @answers.merge(extra)
     end
 
+    # The data a host binds when rendering this flow's Liquid strings — the
+    # `question` of the current step, the `text` of a display step, or a
+    # `send_email` template.
+    #
+    # Plain and JSON-serializable: keys are Strings, Symbol values become
+    # Strings, nesting is preserved. Take it fresh at **display time**, not at
+    # load time: answers and totals accumulate as the wizard progresses, so
+    # `question "Thanks {{ answers.name }}, what is your email?"` can only be
+    # rendered once :name has been collected.
+    #
+    # @example Rendering the current question in a host that has Liquid
+    #   Liquid::Template.parse(engine.current_step.question)
+    #                   .render(engine.render_context)
+    #
+    # @return [Hash{String => Object}] `"answers"` and `"accumulators"`
+    def render_context
+      {
+        "answers"      => jsonify(@answers),
+        "accumulators" => jsonify(@totals)
+      }
+    end
+
+    # What the completed flow *asks* the host to do — currently the flow's
+    # `send_email` declarations, each as a plain, JSON-serializable Hash.
+    #
+    # The list is **advisory**. The gem sends nothing, builds no message and
+    # tracks no delivery; a host may process all of it, some of it or none of
+    # it. That framing is what lets new action types (a webhook, a CRM push) be
+    # added without breaking anyone: a host loops over the array and handles
+    # the `"type"` values it recognizes.
+    #
+    # Templates are returned **raw**, paired with a `"context"` snapshot equal
+    # to {#render_context}. The gem cannot render them — it has no Liquid and
+    # no Markdown converter, by design (see {Email}) — and shipping the context
+    # alongside makes each entry self-contained: a background job can pick one
+    # up minutes later, with no engine and no session, and still have
+    # everything it needs. The cost is that the context repeats per action,
+    # which is the right trade for a payload measured in kilobytes.
+    #
+    # Empty until the flow finishes.
+    #
+    # @example What a host enqueues
+    #   engine.on_complete_actions
+    #   # => [{ "type"          => "send_email",
+    #   #       "to"            => "{{ answers.email }}",
+    #   #       "from"          => "Qualified.At",
+    #   #       "subject"       => "Thank you for filling the form",
+    #   #       "body_markdown" => "Dear {{ answers.name }},\n",
+    #   #       "context"       => { "answers"      => { "name" => "Ada", "email" => "ada@x.io" },
+    #   #                            "accumulators" => { "price" => 240.0 } } }]
+    #
+    # @example What a host does with it
+    #   engine.on_complete_actions.each do |action|
+    #     next unless action["type"] == "send_email"
+    #
+    #     OutboundMailJob.perform_later(action)  # renders Liquid + Markdown, then delivers
+    #   end
+    #
+    # @return [Array<Hash{String => Object}>] ordered as declared; empty until
+    #   {#finished?}
+    def on_complete_actions
+      return [] unless finished?
+
+      context = render_context.freeze
+      @definition.emails.map { |email| email.to_action(context) }
+    end
+
     # Rebuilds an Engine from a previously saved state.
     #
     # @param definition [Definition] same definition used when state was captured
@@ -282,6 +349,22 @@ module Inquirex
     end
 
     private
+
+    # Normalizes collected data into what JSON would make of it, so that a
+    # render context (or an enqueued action) survives a round-trip through a
+    # job queue unchanged: Symbol keys and Symbol values become Strings,
+    # nesting is preserved, everything else passes through.
+    #
+    # @param value [Object]
+    # @return [Object]
+    def jsonify(value)
+      case value
+      when Hash   then value.each_with_object({}) { |(key, item), acc| acc[key.to_s] = jsonify(item) }
+      when Array  then value.map { |item| jsonify(item) }
+      when Symbol then value.to_s
+      else value
+      end
+    end
 
     def restore_state(definition, state, validator)
       @definition = definition

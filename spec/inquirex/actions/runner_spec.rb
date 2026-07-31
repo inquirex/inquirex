@@ -16,10 +16,6 @@ RSpec.describe Inquirex::Actions::Runner do
       action :gated, if: equals(:name, "nobody") do
         send_email to: "admin@x.co", subject: "never", text: "never"
       end
-
-      action :custom do
-        run { |collected, outbox| outbox.record(:"custom_saw_#{collected.name}", :ok) }
-      end
     end
   end
 
@@ -43,24 +39,37 @@ RSpec.describe Inquirex::Actions::Runner do
       expect(outbox.messages.first.to).to eq(["ada@lovelace.io"])
     end
 
-    it "records ok, skipped, and custom results in declaration order" do
+    it "records ok and skipped results in declaration order" do
       expect(outbox.results.map { |r| [r.action_id, r.status] }).to eq(
-        [[:receipt, :ok], [:gated, :skipped], [:custom_saw_Ada, :ok], [:custom, :ok]]
+        [[:receipt, :ok], [:gated, :skipped]]
       )
     end
   end
 
+  # Built without the DSL: with `run` gone there is no DSL word that can raise
+  # on purpose, and a host-registered effect (the extension point the registry
+  # exists for) is exactly what this behavior protects.
   describe "failure isolation" do
     subject(:outbox) { Inquirex::Actions.run(definition, name: "Ada").outbox }
 
-    let(:definition) do
-      Inquirex.define id: "failing" do
-        start :name
-        ask(:name) { type(:string); question("Name?") }
+    let(:failing_effect) do
+      Class.new(Inquirex::Actions::Base) do
+        def call(_answers, _outbox) = raise("kaput")
+      end.new
+    end
 
-        action(:boom)  { run { raise "kaput" } }
-        action(:after) { send_email to: "a@b.c", subject: "still runs", text: "t" }
-      end
+    let(:definition) do
+      Inquirex::Definition.new(
+        start_step_id: :name,
+        nodes:         { name: Inquirex::Node.new(id: :name, verb: :ask, type: :string, question: "Name?") },
+        actions:       [
+          Inquirex::Actions::Action.new(id: :boom, effects: [failing_effect]),
+          Inquirex::Actions::Action.new(
+            id:      :after,
+            effects: [Inquirex::Actions::SendEmail.new(to: "a@b.c", subject: "still runs", text: "t")]
+          )
+        ]
+      )
     end
 
     it "records the failure and keeps going" do

@@ -17,17 +17,7 @@ module Inquirex
         @meta = {}
         @accumulators = {}
         @actions = []
-        @allowed_domains = []
-      end
-
-      # Declares the domains outbound effects (webhook) may send answers to.
-      # Conventionally the first declaration in a definition, so the flow's
-      # egress surface is auditable at a glance. "example.com" matches that
-      # host exactly; "*.example.com" matches its subdomains.
-      #
-      # @param domains [Array<String>]
-      def allowed_domains(*domains)
-        @allowed_domains.concat(domains.flatten)
+        @emails = []
       end
 
       # Declares a named running total the flow accumulates into as answers come in.
@@ -116,12 +106,50 @@ module Inquirex
         add_step(id, :confirm, &)
       end
 
-      # Declares a named post-completion action: effects (send_email, run, ...)
-      # executed server-side after the flow finishes, with the collected
-      # answers. Runs in declaration order; gate with a serializable rule via
-      # the if: option.
+      # Declares an email the host application sends once the flow completes.
       #
-      # @example Email the collected answers when business income was selected
+      # The four setters take opaque Liquid template strings; this gem stores
+      # and serializes them and does nothing else. Rendering, Markdown
+      # conversion and delivery belong to the host — see {Email} for the full
+      # division of labour. Declare as many as the flow needs; they serialize
+      # in declaration order.
+      #
+      # @example A receipt for the person who filled the form
+      #   send_email do
+      #     to      "{{ answers.email }}"
+      #     from    "Qualified.At"
+      #     subject "Thank you for filling the form"
+      #     body_markdown <<~'TEXT'
+      #       Dear {{ answers.name }},
+      #
+      #       Your total is ${{ accumulators.price | round: 2 }} minimum.
+      #     TEXT
+      #   end
+      #
+      # @yield block evaluated in {EmailBuilder} (to, from, subject, body_markdown)
+      # @return [void]
+      # @raise [Errors::DefinitionError] without a block, or when a required
+      #   field is missing
+      def send_email(&block)
+        raise Errors::DefinitionError, "send_email requires a block" unless block
+
+        builder = EmailBuilder.new
+        builder.instance_eval(&block)
+        @emails << builder.build
+      end
+
+      # Declares a named post-completion action: a list of effects executed
+      # server-side after the flow finishes, with the collected answers. Runs
+      # in declaration order; gate with a serializable rule via the if: option.
+      #
+      # @deprecated Use the top-level {#send_email} verb instead. `action` is
+      #   retained only so flow definitions already stored by hosts keep
+      #   loading, and it will be removed in 0.8.0. Its one remaining effect,
+      #   {Actions::SendEmail}, builds `Mail::Message` objects into
+      #   `Answers#outbox` — a job the host does better with a declaration it
+      #   renders itself.
+      #
+      # @example (deprecated) Email the collected answers when business income was selected
       #   action :notify_sales, if: Rules::Contains.new(:income_types, "Business") do
       #     send_email to: "sales@example.com",
       #                subject: "New lead: {{name}}",
@@ -130,7 +158,7 @@ module Inquirex
       #
       # @param id [Symbol] action identifier
       # @param opts [Hash] only if: is recognized — a Rules::Base gate
-      # @yield block evaluated in ActionBuilder (send_email, run, ...)
+      # @yield block evaluated in ActionBuilder (send_email)
       def action(id, **opts, &block)
         rule = opts.delete(:if)
         raise Errors::DefinitionError, "Unknown action options: #{opts.keys.inspect}" unless opts.empty?
@@ -154,14 +182,14 @@ module Inquirex
         raise Errors::DefinitionError, "No steps defined" if @nodes.empty?
 
         Definition.new(
-          start_step_id:   @start_step_id,
-          nodes:           @nodes,
-          id:              @flow_id,
-          version:         @flow_version,
-          meta:            @meta,
-          accumulators:    @accumulators,
-          actions:         @actions,
-          allowed_domains: @allowed_domains
+          start_step_id: @start_step_id,
+          nodes:         @nodes,
+          id:            @flow_id,
+          version:       @flow_version,
+          meta:          @meta,
+          accumulators:  @accumulators,
+          actions:       @actions,
+          emails:        @emails
         )
       end
 

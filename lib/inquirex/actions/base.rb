@@ -3,15 +3,17 @@
 module Inquirex
   module Actions
     # Abstract base for action effects — the executable units inside an
-    # `action` block. Subclasses implement #call and, when serializable,
-    # #to_h / .from_h following the same round-trip pattern as Rules::Base.
+    # `action` block. Subclasses implement #call plus #to_h / .from_h,
+    # following the same round-trip pattern as Rules::Base.
     #
-    # Effects that wrap Ruby procs (Actions::Custom) return false from
-    # #serializable? and are stripped from JSON, consistent with how
-    # lambdas are handled everywhere else in Inquirex.
+    # Every effect is serializable. The two that were not — `run`, which
+    # wrapped an arbitrary Ruby proc, and `webhook`, whose destination host was
+    # authorized by the same untrusted document that named it — were removed in
+    # 0.7.0.
+    #
+    # @deprecated Along with the whole `action` verb; see {DSL::FlowBuilder#action}.
     class Base
-      # Executes the effect. Email-building effects append Mail::Message
-      # objects to the outbox; custom effects may do anything server-side.
+      # Executes the effect, appending anything it builds to the outbox.
       #
       # @param answers [Answers] completed answers
       # @param outbox [Outbox] collector for built messages
@@ -19,18 +21,6 @@ module Inquirex
       def call(answers, outbox)
         raise NotImplementedError, "#{self.class}#call must be implemented"
       end
-
-      # @return [Boolean] whether this effect survives JSON serialization
-      def serializable? = true
-
-      # Hook for effects that must be checked against the definition carrying
-      # them (e.g. Webhook vs allowed_domains). Runs inside
-      # Definition#validate!, which both DSL-built and JSON-rehydrated
-      # definitions pass through — so violations fail at load time.
-      #
-      # @param _definition [Definition]
-      # @raise [Errors::DefinitionError] on violation
-      def validate_against(_definition); end
 
       # @return [Hash]
       def to_h

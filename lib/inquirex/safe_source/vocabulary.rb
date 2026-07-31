@@ -198,6 +198,9 @@ module Inquirex
           register_scope(:step,
             label:      "a step",
             vocabulary: -> { DSL::StepBuilder.public_instance_methods(false) })
+          register_scope(:email,
+            label:      "a send_email",
+            vocabulary: -> { DSL::EmailBuilder.public_instance_methods(false) })
           register_scope(:action,
             label:      "an action",
             vocabulary: -> { Actions.types + DSL::ActionBuilder.public_instance_methods(false) })
@@ -205,6 +208,7 @@ module Inquirex
           install_rules!
           install_flow!
           install_step!
+          install_email!
           install_action!
         end
 
@@ -227,14 +231,12 @@ module Inquirex
           allow :flow,
             :meta,
             keywords: { title: :literal, subtitle: :literal, brand: :literal, theme: :literal }
-          # FlowBuilder#allowed_domains flattens, so a literal Array is as
-          # idiomatic as a list of strings; both are inert either way.
-          allow :flow, :allowed_domains, positional: { repeat: :literal, min: 1 }
           allow :flow,
             :accumulator,
             positional: %i[symbol],
             keywords:   { type: :type_name, default: :literal }
           Node::VERBS.each { |verb| allow :flow, verb, positional: %i[symbol], block: :step }
+          allow :flow, :send_email, block: :email
           allow :flow, :action, positional: %i[symbol], keywords: { if: :rule }, block: :action
         end
 
@@ -270,11 +272,26 @@ module Inquirex
           exclude :step, :compute, "a compute block is arbitrary Ruby, indistinguishable from a payload"
         end
 
-        # `text:` and `html:` are :string — not :literal — on purpose:
-        # {Actions::SendEmail} also accepts `{ file: "path" }` and `File.read`s
-        # it at definition time, which would turn a stored flow definition into
-        # an arbitrary file-disclosure primitive with an attacker-chosen
-        # recipient.
+        # The four `send_email` setters take one static string each. {Email}
+        # never renders them and the gem never delivers anything, so what a
+        # stored definition can express here is a template the *host* chooses
+        # to render — which is why the whole verb needs no exclusions. Liquid
+        # `{{ }}` placeholders are ordinary text to the parser; the shape being
+        # enforced is "a string literal with no Ruby in it", so `#{}`, a
+        # constant and a method call are rejected exactly as everywhere else.
+        #
+        # @return [void]
+        def install_email!
+          %i[to from subject body_markdown].each do |setter|
+            allow :email, setter, positional: %i[string]
+          end
+        end
+
+        # The deprecated `action` scope, kept only so definitions hosts already
+        # store keep loading. It has no exclusions left: `run` and `webhook`
+        # were deleted from the gem in 0.7.0 rather than merely refused here,
+        # so the sole effect is `send_email`, and its bodies are `:string`
+        # because the `{ file: "path" }` form is gone too.
         #
         # @return [void]
         def install_action!
@@ -282,12 +299,6 @@ module Inquirex
             :send_email,
             keywords: { to: :string, from: :string, cc: :string, bcc: :string, reply_to: :string,
                         subject: :string, text: :string, html: :string, headers: :literal }
-          exclude :action, :run, "a run block is arbitrary Ruby, indistinguishable from a payload"
-          exclude :action,
-            :webhook,
-            "its destination host is authorized by the allowed_domains declared in the same " \
-            "untrusted document, and plain http to localhost is permitted — configure outbound " \
-            "delivery in the host application instead"
         end
       end
 

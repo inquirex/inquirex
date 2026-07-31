@@ -10,15 +10,21 @@ module Inquirex
     # render values verbatim; the html body HTML-escapes every interpolated
     # value automatically. Both bodies given => multipart/alternative.
     #
-    # Bodies accept an inline template String or { file: "path" }, which is
-    # read once at definition time and inlined — a definition rehydrated from
-    # JSON never touches the filesystem.
+    # Bodies must be inline template Strings. The `{ file: "path" }` form was
+    # removed in 0.7.0: the gem `File.read` it at definition time, which turned
+    # a stored flow definition into an arbitrary file-disclosure primitive with
+    # an attacker-chosen recipient.
     #
     # Images: reference external URLs in the html body. Attachments are
     # deliberately unsupported.
     #
     # The mail gem is a soft dependency, required only when a message is
     # actually built. Rails hosts always have it (ActionMailer depends on it).
+    #
+    # @deprecated Along with the whole `action` verb. The top-level
+    #   `send_email` block ({Email}) replaces it: the gem declares the
+    #   templates and the host renders and delivers, so the core gem needs
+    #   neither the mail gem nor a template engine. See {DSL::FlowBuilder#action}.
     class SendEmail < Base
       # Scalar header fields rendered verbatim via Template.render_text in #to_mail and #to_h.
       SCALAR_FIELDS = %i[to from cc bcc reply_to subject].freeze
@@ -37,8 +43,8 @@ module Inquirex
 
       # @param to [String] recipient template (required)
       # @param subject [String] subject template (required)
-      # @param text [String, Hash, nil] plain-text body template or { file: }
-      # @param html [String, Hash, nil] HTML body template or { file: }
+      # @param text [String, nil] plain-text body template
+      # @param html [String, nil] HTML body template
       # @param headers [Hash] extra headers (values support {{field}})
       # @raise [Errors::DefinitionError] when required fields are missing
       def initialize(to:, subject:, from: nil, cc: nil, bcc: nil, reply_to: nil,
@@ -137,15 +143,12 @@ module Inquirex
         part
       end
 
-      # Inline template string, or { file: "path" } read once at definition time.
+      # Bodies are inline template strings and nothing else.
       def resolve_body(value)
         return value if value.nil? || value.is_a?(String)
 
-        path = value.is_a?(Hash) && (value[:file] || value["file"])
-        return File.read(File.expand_path(path)) if path.is_a?(String)
-
         raise Errors::DefinitionError,
-          "send_email body must be a template String or { file: \"path\" }, got #{value.inspect}"
+          "send_email body must be a template String, got #{value.inspect}"
       end
 
       def validate!

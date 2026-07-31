@@ -4,16 +4,24 @@ module Inquirex
   # Post-completion actions: named side-effect declarations that run
   # server-side after a flow finishes, with access to the collected answers.
   #
-  # The DSL word `action` groups one or more *effects* (send_email, run, ...).
-  # Effects are looked up in a registry keyed by their DSL verb, so new effect
-  # types — a webhook, a save_record in inquirex-rails — plug in without core
+  # The DSL word `action` groups one or more *effects*, looked up in a registry
+  # keyed by their DSL verb, so a host gem can add an effect type without core
   # changes: register the class and it gains both the DSL word and JSON wire
   # support.
   #
-  #   Inquirex::Actions.register(:webhook, MyGem::WebhookEffect)
+  #   Inquirex::Actions.register(:save_record, MyGem::SaveRecordEffect)
   #
-  # Actions never deliver anything themselves. send_email builds Mail::Message
-  # objects into Answers#outbox; the host application decides how to send them.
+  # Actions never deliver anything themselves. {SendEmail} builds
+  # Mail::Message objects into Answers#outbox; the host decides how to send.
+  #
+  # @deprecated Retained in 0.7.0 only so flow definitions hosts already store
+  #   keep loading; removal is planned for 0.8.0. New flows declare a
+  #   {Inquirex::Email top-level `send_email` block}, which the gem serializes
+  #   and the host renders — no `mail` gem, no template engine, nothing to
+  #   execute. Two effects were removed outright in 0.7.0 because their entire
+  #   purpose was executing something a stored definition named: `run`
+  #   (arbitrary Ruby) and `webhook` (an SSRF primitive whose destination host
+  #   was authorized by the same untrusted document).
   module Actions
     @registry = {}
 

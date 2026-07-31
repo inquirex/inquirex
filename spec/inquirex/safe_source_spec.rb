@@ -88,13 +88,24 @@ RSpec.describe Inquirex::SafeSource do
     end
 
     it "names the excluded verb and its reason, and points at the escape hatch" do
-      expect(described_class.validate(DslPayloads.rejected.fetch("webhook effect")))
-        .to contain_exactly(/`webhook` is not available in safe mode: .*allowed_domains.*unsafe: true/m)
+      expect(described_class.validate(DslPayloads.rejected.fetch("compute block")))
+        .to contain_exactly(/`compute` is not available in safe mode: .*payload.*unsafe: true/m)
     end
 
-    it "explains a rejected Ruby block rather than its arity" do
-      expect(described_class.validate(DslPayloads.rejected.fetch("compute block")))
-        .to include(a_string_matching(/`compute` is not available in safe mode/))
+    # These three were excluded in safe mode until 0.7.0 deleted them from the
+    # gem, so they are now simply words the DSL does not have.
+    it "reports the deleted capabilities as unknown words rather than exclusions" do
+      expect(described_class.validate(DslPayloads.rejected.fetch("webhook effect")))
+        .to contain_exactly(/`webhook` is not allowed inside an action block/)
+      expect(described_class.validate(DslPayloads.rejected.fetch("allowed_domains")))
+        .to contain_exactly(/`allowed_domains` is not allowed inside a flow block/)
+      expect(described_class.validate(DslPayloads.rejected.fetch("action run block")))
+        .to contain_exactly(/`run` is not allowed inside an action block/)
+    end
+
+    it "refuses a file: body, so a template cannot name a path" do
+      expect(described_class.validate(DslPayloads.rejected.fetch("send_email file body")))
+        .to contain_exactly(/`send_email` text: must be a plain string/)
     end
   end
 

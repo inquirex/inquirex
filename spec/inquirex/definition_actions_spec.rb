@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
-# Serialization and DSL behavior of post-completion actions on Definition.
+# Serialization and DSL behavior of the deprecated post-completion `action`
+# verb on Definition. Kept working — and kept tested — because hosts have flows
+# with `action` blocks already stored; new flows use the top-level `send_email`
+# verb instead (spec/inquirex/email_spec.rb).
 RSpec.describe Inquirex::Definition do
   subject(:definition) do
     Inquirex.define id: "actions-wire", version: "2.0.0" do
@@ -11,13 +14,8 @@ RSpec.describe Inquirex::Definition do
         send_email to: "{{email}}", subject: "Thanks!", text: "Hi {{email}}"
       end
 
-      action :ruby_only do
-        run { |_answers, _outbox| :noop }
-      end
-
       action :mixed do
         send_email to: "admin@x.co", subject: "Lead", html: "{{answers_summary}}"
-        run { |_answers, _outbox| :noop }
       end
     end
   end
@@ -30,8 +28,7 @@ RSpec.describe Inquirex::Definition do
       expect(wire.dig("actions", 0, "if")).to eq("op" => "not_empty", "field" => "email")
     end
 
-    it "strips run blocks and omits actions left with no effects" do
-      expect(wire["actions"].map { |a| a["id"] }).not_to include("ruby_only")
+    it "serializes every effect, since none can be non-serializable any more" do
       expect(wire.dig("actions", 1, "effects").size).to eq(1)
     end
 
@@ -89,7 +86,7 @@ RSpec.describe Inquirex::Definition do
         Inquirex.define id: "opts" do
           start :a
           ask(:a) { type(:string); question("?") }
-          action(:x, when: :always) { run { :noop } }
+          action(:x, when: :always) { send_email to: "a@b.c", subject: "s", text: "t" }
         end
       end.to raise_error(Inquirex::Errors::DefinitionError, /Unknown action options/)
     end

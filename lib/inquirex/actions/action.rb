@@ -10,9 +10,9 @@ module Inquirex
     #   end
     #
     # Rules reuse the same serializable AST as transitions, so conditions
-    # survive the JSON round-trip. Non-serializable effects (run blocks) are
-    # stripped on serialization; an action left with no serializable effects
-    # is omitted from JSON entirely.
+    # survive the JSON round-trip.
+    #
+    # @deprecated Along with the whole `action` verb; see {DSL::FlowBuilder#action}.
     class Action
       attr_reader :id, :rule, :effects
 
@@ -32,16 +32,11 @@ module Inquirex
         @rule.nil? || @rule.evaluate(answers_hash)
       end
 
-      # @return [Boolean] whether anything survives JSON serialization
-      def serializable?
-        @effects.any?(&:serializable?)
-      end
-
-      # @return [Hash] wire format; run blocks are stripped
+      # @return [Hash] wire format
       def to_h
         hash = { "id" => @id.to_s }
         hash["if"] = @rule.to_h if @rule
-        hash["effects"] = @effects.select(&:serializable?).map(&:to_h)
+        hash["effects"] = @effects.map(&:to_h)
         hash
       end
 

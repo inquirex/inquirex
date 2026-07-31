@@ -45,6 +45,10 @@ This one is the core gem in the Inquirex ecosystem that focuses on:
 
 - Named ***accumulators*** for running totals (pricing, complexity scoring, credit scoring, lead qualification)
 
+- Liquid `{{ }}` placeholders in every user-facing string, so a question can greet the visitor by the name they gave two steps ago (see [Liquid Placeholders](#liquid-placeholders-in-user-facing-text))
+
+- A top-level `send_email` declaration, and an advisory `Engine#on_complete_actions` list the host chooses what to do with (see [Declaring Emails](#declaring-emails))
+
 - An immutable flow definition graph
 
 - A runtime engine for stateful step traversal
@@ -149,6 +153,8 @@ engine.finished? # => true
 - `start :step_id` sets the entry step
 - `meta title:, subtitle:, brand:, theme:` adds optional frontend metadata (see [Theme](#theme-and-branding))
 - `accumulator :name, type:, default:` declares a running total (see [Accumulators](#accumulators))
+- `send_email do ... end` declares an email for the host to send on completion (see [Declaring Emails](#declaring-emails))
+- `action :id do ... end` — **deprecated**, see [Post-Completion Actions](#post-completion-actions-deprecated)
 
 ### Step verbs
 
@@ -440,6 +446,8 @@ Behavior:
 - Use `total(:price)` / `totals` to read running totals
 - Use `to_state` / `.from_state` for persistence/resume (totals included)
 - Use `prefill!(hash)` to merge externally-supplied answers into the state, e.g. fields extracted by an LLM from a free-text answer (see [inquirex-llm](#extension-gems)). Existing answers are preserved; `nil` and empty values are ignored so they don't spuriously satisfy `not_empty` rules. The engine auto-advances past any newly-skippable step.
+- Use `render_context` to get the plain, JSON-serializable Hash you bind when rendering a step's Liquid placeholders (see [Liquid Placeholders](#liquid-placeholders-in-user-facing-text))
+- Use `on_complete_actions` once finished to get the advisory list of things the flow asks the host to do (see [Declaring Emails](#declaring-emails))
 
 ```ruby
 engine = Inquirex::Engine.new(definition)
@@ -500,7 +508,7 @@ Guard rails:
 - `skip` on a **display** step raises `Errors::NonCollectingStepError` (use `advance`)
 - `skip` after the flow finished raises `Errors::AlreadyFinishedError`
 
-The `skipped` list survives `to_state` / `.from_state` round-trips (string keys from JSON are normalized back to symbols), and `engine.answers_with_metadata` merges it into the answers under `:skipped` — so post-completion actions (webhook payloads, email templates) and API consumers see which values were defaults-by-skip.
+The `skipped` list survives `to_state` / `.from_state` round-trips (string keys from JSON are normalized back to symbols), and `engine.answers_with_metadata` merges it into the answers under `:skipped` — so a host rendering a `send_email` template, or an API consumer, can see which values were defaults-by-skip.
 
 On the wire, step JSON carries `"required": false` (omitted when true, like other defaults):
 
@@ -537,73 +545,151 @@ engine.after_completion do |eng|
 end
 ```
 
-If no hook supplies one, the engine stamps the minimal core version (`engine: "inquirex"`, `engine_version: Inquirex::VERSION`). The metadata persists through `Engine#to_state` / `Engine.from_state`, and `engine.answers_with_metadata` merges it into the answers hash under `:completion_metadata` — which also makes it available to post-completion actions: webhook payloads carry it, and email templates can interpolate `{{completion_metadata.engine}}`.
+If no hook supplies one, the engine stamps the minimal core version (`engine: "inquirex"`, `engine_version: Inquirex::VERSION`). The metadata persists through `Engine#to_state` / `Engine.from_state`, and `engine.answers_with_metadata` merges it into the answers hash under `:completion_metadata` — which also makes it available when a host renders templates — `{{ answers.completion_metadata.engine }}` resolves if you bind `answers_with_metadata` rather than `answers`.
 
-## Post-Completion Actions
+## Liquid Placeholders in User-Facing Text
 
-After all questions are answered, `action` declarations run server-side with the collected answers. The flagship effect is `send_email`, which **builds** `Mail::Message` objects (the same object ActionMailer wraps) and attaches them to `answers.outbox` — **nothing is delivered**; the host application decides how and when to send.
+Every user-facing string in the DSL — a step's `question`, a display step's `text`, and every `send_email` field — may carry [Liquid](https://shopify.github.io/liquid/) `{{ }}` placeholders referring to earlier answers and to accumulator totals:
 
 ```ruby
-Inquirex.define id: "tax-intake-2025" do
-  allowed_domains "*.agentica.group"   # egress allowlist for webhook effects
+ask :email do
+  type :email
+  question "Thanks {{ answers.name }}, where can we reach you?"
+  transition to: :quote
+end
 
+say :quote do
+  text "{{ answers.name }}, your estimate starts at ${{ accumulators.price | round: 2 }}."
+end
+```
+
+**`{{ }}` is data. `#{}` is Ruby, and is forbidden.** The two look similar and are not variations on a theme. Ruby interpolation in a stored flow definition is arbitrary code execution, which is why [`SafeSource`](#loading-dsl-source) rejects it outright; Liquid reaches the same result as pure data. Adding `{{ }}` therefore *relieves* pressure on the security boundary rather than widening it — it is the supported way to do the thing authors otherwise reach for `#{}` to achieve. Nothing in the allowlist had to change to permit it: to the parser, `{{ answers.name }}` is ordinary text inside a string literal.
+
+Two rules follow from the zero-dependency policy:
+
+- **The gem stores, the host renders.** `Node#question`, `Node#text` and the `Email` fields all return the raw source. This gem has no Liquid dependency and never renders anything.
+- **Render at display time, not at load time.** Answers accumulate as the wizard progresses, so a question shown at step 4 may reference an answer collected at step 2. Take the context fresh each time you render:
+
+```ruby
+Liquid::Template.parse(engine.current_step.question).render(engine.render_context)
+```
+
+`Engine#render_context` is a plain, JSON-serializable Hash — Symbol keys and values become Strings, nesting is preserved:
+
+```ruby
+engine.render_context
+# => { "answers"      => { "name" => "Ada", "status" => "business" },
+#      "accumulators" => { "price" => 400 } }
+```
+
+The drop names (`answers`, `accumulators`) are a convention this gem documents rather than enforces — it never renders, so it attaches no meaning to them.
+
+### Catching typos before a lead sees them
+
+`Definition#template_warnings` scans every user-facing string for references that resolve to nothing:
+
+```ruby
+definition.template_warnings
+# => ["step :email question references {{ answers.phone }}, which no step collects",
+#     "send_email #1 to references {{ accumulators.total }}, which is not a declared accumulator"]
+```
+
+It is deliberately **advisory** — Liquid renders an unknown reference as an empty string, and definitions with warnings still load and run. Surface these in an editor or a CI check; do not gate loading on them. It is also deliberately partial: full Liquid syntax cannot be parsed without Liquid, so `Inquirex::TemplateRefs` recognizes `{{ answers.X }}` and `{{ accumulators.Y }}` and passes over anything else in silence rather than rejecting it on a guess.
+
+## Declaring Emails
+
+A flow declares the email it wants sent with a top-level `send_email` block. Each word is a setter taking one template string, matching the rest of the DSL's idiom:
+
+```ruby
+Inquirex.define do
+  start :name
   # ... ask steps ...
 
-  action :client_receipt, if: not_empty(:email) do
-    send_email to:      "{{email}}",
-               from:    "forms@agentica.group",
-               subject: "Thanks {{name}} — we received your intake",
-               text:    <<~TEXT,
-                 Hi {{name}},
-                 We received your answers:
+  send_email do
+    to      "{{ answers.email }}"
+    from    "Qualified.At"
+    subject "Thank you for filling the form"
+    body_markdown <<~'TEXT'
+      Dear {{ answers.name }},
 
-                 {{answers_summary}}
-               TEXT
-               html:    <<~HTML
-                 <p>Hi {{name}},</p>
-                 <img src="https://cdn.agentica.group/logo.png" alt="Logo">
-                 {{answers_summary}}
-               HTML
-  end
-
-  action :admin_alert do
-    send_email to: "owner@agentica.group", from: "forms@agentica.group",
-               subject: "New lead: {{name}} <{{email}}>",
-               html: "{{answers_summary}}"
-    run { |answers, outbox| Metrics.count(:lead, answers.to_flat_h) }
-  end
-
-  action :crm_push do
-    webhook url: "https://hooks.agentica.group/inquirex",
-            headers: { "X-Api-Key" => "..." }
+      Thank you for filling out the form. Your total is
+      ${{ accumulators.price | round: 2 }} minimum.
+    TEXT
   end
 end
 ```
 
-Execution and delivery:
+Declare as many as the flow needs; they serialize in declaration order under the `"emails"` key.
+
+Key semantics:
+
+- **The gem declares, the host renders.** `Inquirex::Email` holds four opaque template strings. It never renders them, never converts Markdown, never builds a message and never delivers anything. Rendering would mean depending on a template engine, a Markdown converter and a mailer, and the core gem has no required runtime dependencies. This is the same division of labour as lambdas: the definition describes intent, the server-side host owns execution.
+- **`body_markdown` is the single body source.** There is no `body_html` and no `body_text`. Markdown is designed to read as plain text, so the host renders `text/plain` from it as-is and `text/html` from Markdown → HTML. One source, two MIME parts, nothing to keep in sync.
+- **No function calls in the DSL.** Format is a property of the body (`body_markdown`), not something you call on it. There is no `markdown_to_html(...)` helper and there will not be one.
+- **Write bodies with a single-quoted heredoc** (`<<~'TEXT'`). A plain `<<~TEXT` interpolates `#{}` in Ruby before the template ever reaches Liquid, which is exactly the hole `SafeSource` closes for stored DSL.
+- **Liquid syntax is checked at definition time when Liquid happens to be loaded.** `Inquirex::Email.liquid_template_class` looks the class up at call time; if the host has Liquid (every Rails app that renders these does), each field is parsed in strict mode so an authoring typo raises where the author can see it. If it does not, the strings are stored verbatim and nothing breaks.
+
+### `Engine#on_complete_actions`
+
+Once the flow finishes, the engine hands back what the flow *asks* the host to do:
+
+```ruby
+engine.on_complete_actions
+# => [{ "type"          => "send_email",
+#       "to"            => "{{ answers.email }}",
+#       "from"          => "Qualified.At",
+#       "subject"       => "Thank you for filling the form",
+#       "body_markdown" => "Dear {{ answers.name }},\n...",
+#       "context"       => { "answers"      => { "name" => "Ada", "email" => "ada@x.io" },
+#                            "accumulators" => { "price" => 400 } } }]
+```
+
+```ruby
+engine.on_complete_actions.each do |action|
+  next unless action["type"] == "send_email"
+
+  OutboundMailJob.perform_later(action)   # renders Liquid + Markdown, then delivers
+end
+```
+
+- **The list is advisory.** The gem sends nothing, builds no `Mail::Message` and tracks no delivery. A host may process all of it, some of it or none of it. That framing is what keeps future action types (a webhook, a CRM push) additive: loop over the array and handle the `"type"` values you recognize.
+- **Templates are raw, and the context travels with them.** The gem cannot render — no Liquid — so each entry pairs its templates with a snapshot equal to `Engine#render_context`. That makes an entry self-contained: a background job can pick it up minutes later, with no engine and no session, and still have everything it needs. The context repeats per action, which is the right trade for a payload measured in kilobytes.
+- **Everything in it is plain JSON.** `JSON.parse(JSON.generate(actions)) == actions`, so it can go straight into a queue.
+- Empty until `engine.finished?`.
+
+## Post-Completion Actions (deprecated)
+
+> [!WARNING]
+>
+> The `action` verb is **deprecated as of 0.7.0** and will be removed in 0.8.0. It is retained only so flow definitions hosts already store keep loading. New flows use the top-level [`send_email`](#declaring-emails) declaration, which the gem serializes and the host renders — no `mail` gem, no template engine, nothing to execute.
+
+`action` declarations run server-side after a flow finishes, building `Mail::Message` objects into `answers.outbox`; nothing is delivered.
+
+```ruby
+action :client_receipt, if: not_empty(:email) do
+  send_email to:      "{{email}}",
+             from:    "forms@agentica.group",
+             subject: "Thanks {{name}} — we received your intake",
+             text:    "Hi {{name}}\n\n{{answers_summary}}",
+             html:    "<p>Hi {{name}}</p>{{answers_summary}}"
+end
+```
 
 ```ruby
 answers = Inquirex::Actions.run(definition, engine.answers)
 answers.outbox.messages   # => [Mail::Message, ...]
 answers.outbox.results    # => per-action :ok / :skipped / :failed trail
-
-# In a Rails host:
-answers.outbox.each do |message|
-  ActionMailer::Base.wrap_delivery_behavior(message)  # adopt Rails delivery config
-  message.deliver
-end
 ```
 
-Key semantics:
+Note the different templating: the effect renders `{{field}}` against `Answers#to_flat_h` itself (`Inquirex::Actions::Template`), which is *not* Liquid. That divergence is one of the reasons the verb is going away.
 
-- **Templating is `{{field}}` interpolation only** — dot-notation keys resolved against `Answers#to_flat_h`, deliberately inert (no code execution), so definitions stored in a database render safely. Values interpolated into `html:` bodies are HTML-escaped automatically; `text:` bodies stay verbatim. The built-in `{{answers_summary}}` expands to all collected answers.
-- **`if:` gates** reuse the serializable rule AST (`not_empty(:email)`, ...). A false rule records `:skipped` — declare no actions (or gate them) when a flow should only save answers.
-- **`run { |answers, outbox| ... }`** is the full-Ruby escape hatch; like all lambdas it is stripped from JSON.
-- **Failures are isolated**: a raising effect records `:failed` in `outbox.results` and never blocks other actions.
-- **Images** in HTML bodies must be external URLs; attachments are unsupported.
-- The `mail` gem is a soft dependency, needed only when a message is built (Rails hosts already have it via ActionMailer).
-- **`webhook url:`** POSTs `{"answers": {...}}` as JSON to a static URL. The URL's host must be covered by `allowed_domains`, declared at the top of the definition so the flow's egress surface is auditable at a glance. The check runs inside `Definition.new` — a JSON definition whose webhook URL was tampered with fails at *rehydration*, before anything executes. Also enforced: https only (plain http just for localhost), no userinfo, no `{{field}}` templates in URLs (the destination must be static), redirects are not followed, and non-2xx responses record `:failed`.
-- Effects are extensible: `Inquirex::Actions.register(:save_record, MyEffect)` gives a new verb both DSL and JSON wire support.
+**Removed outright in 0.7.0** — not merely refused in safe mode, so `unsafe: true` does not bring them back:
+
+- **`run { |answers, outbox| ... }`** — arbitrary Ruby in a document that may have come from a database column.
+- **`webhook url:`** and the top-level **`allowed_domains`** declaration — the destination host was authorized by the allowlist declared in the *same untrusted document*, and plain `http` to localhost was permitted, making it an egress and SSRF primitive granted to whoever authored the text. A host that wants customer-configured webhooks should own that configuration.
+- **`send_email text:`/`html:` given as `{ file: "path" }`** — the gem `File.read` it at definition time, i.e. arbitrary file disclosure with an attacker-chosen recipient.
+
+Everything an `action` can still express is serializable, so nothing is stripped from JSON any more.
 
 ## Serialization
 
@@ -622,8 +708,8 @@ Serialized structure includes:
 - Steps and transitions
 - Rule AST payloads
 - Widget hints
-- Post-completion actions (`actions`) with their rules and effects; `run` blocks are stripped, and an action left with no serializable effects is omitted entirely
-- The `allowed_domains` egress allowlist, re-enforced against webhook URLs every time a definition is rehydrated
+- `send_email` declarations (`emails`), in declaration order, as raw template strings
+- Deprecated post-completion actions (`actions`) with their rules and effects; nothing is stripped, since every effect is now serializable
 
 Important serialization details:
 
@@ -643,8 +729,8 @@ Important serialization details:
 definition = Inquirex.load_dsl(qualifier.flow_dsl)
 
 # Source you control as code, e.g. a file in your own repository. Skips
-# validation, which is the only way to use compute / default { } / fallback /
-# an action's run — all of which are arbitrary Ruby by definition.
+# validation, which is the only way to use compute, a block-form default or
+# fallback — all of which are arbitrary Ruby by definition.
 definition = Inquirex.load_dsl(File.read("flows/tax_intake.rb"), unsafe: true)
 ```
 
@@ -660,9 +746,11 @@ How it decides: the source is parsed with Prism and walked by recursive descent 
 
 Deliberately not available in safe mode:
 
-- `compute`, a block-form `default`, `fallback` and an action's `run` — a Ruby block cannot be validated; a `compute` block is indistinguishable from a payload
-- the `webhook` action effect — its destination host is authorized by the `allowed_domains` declared in the *same untrusted document*, and plain `http` to localhost is permitted, so it is an egress and SSRF primitive granted to whoever authored the text
-- `send_email text:`/`html:` given as `{ file: "path" }` — the gem `File.read`s it at definition time, which would make a flow definition an arbitrary file-disclosure primitive with an attacker-chosen recipient
+- `compute`, a block-form `default` and `fallback` — a Ruby block cannot be validated; a `compute` block is indistinguishable from a payload
+
+Note what is *not* on that list any more. The `webhook` effect, the `allowed_domains` declaration, an action's `run` block and the `{ file: "path" }` body form were **removed from the gem** in 0.7.0 rather than merely refused here (see [Post-Completion Actions](#post-completion-actions-deprecated)). Deletion is the stronger guarantee: there is no `unsafe: true` that brings them back.
+
+Liquid `{{ }}` placeholders need no allowlist entry at all — to the parser they are ordinary text inside a string literal. That is the argument for using them: they give an author what `#{}` would, as data, with nothing to execute.
 
 Two ceilings apply, both measured against real flows (the largest is under 6 KB, the deepest legitimate construct 9 levels) and both overridable:
 
