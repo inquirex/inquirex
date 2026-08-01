@@ -29,7 +29,7 @@ The gem has had optional steps since 0.7.0. Nothing downstream implements them y
 
 - `@kigster/inquirex-js` — no Skip control; `"required": false` is ignored.
 - `inquirex-webui` — the DSL printer does not emit the setter, so a visual save silently strips it.
-- **qualified.at** — `SafeDsl::Validator` does not allowlist `required`. That validator is default-deny and runs on read as well as write, so a flow using it is **rejected**, not degraded. This is live: production runs `inquirex 0.7.0` with a verb the app refuses.
+- ~~**qualified.at** — `SafeDsl::Validator` does not allowlist `required`.~~ **Fixed 2026-08-01.** The validator now carries `required: CallSpec.new(positional: { optional: :literal })` in `STEP_CALLS`, matching the gem's `required(value = true)` signature so bare `required` is accepted alongside `required false`. Until that ships, a flow using the verb is **rejected**, not degraded — the validator is default-deny and runs on read as well as write, so it takes down flows that were already saved.
 
 ### Planned
 
