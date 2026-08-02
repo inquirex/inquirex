@@ -1,0 +1,5 @@
+user=inquirex
+project=inquirex
+exclude-labels=duplicate,question,invalid,wontfix
+issues=false
+add-sections={"security":{"prefix":"### Security","labels":["security"]}}

@@ -19,8 +19,11 @@ task gem: [:build] do
 end
 
 task permissions: [:clean] do
-  shell("chmod -v o+r,g+r * */* */*/* */*/*/* */*/*/*/* */*/*/*/*/*")
-  shell("find . -type d -exec chmod o+x,g+x {} \\;")
+  # One traversal replaces a six-level glob chain that printed "No such file
+  # or directory" for every level this project does not have, skipped dotfiles
+  # entirely, and silently stopped at depth six. .git is pruned — its objects
+  # have no business being group-readable.
+  shell("find . -path ./.git -prune -o -type d -exec chmod o+rx,g+rx {} + -o -type f -exec chmod o+r,g+r {} +")
 end
 
 task build: :permissions
