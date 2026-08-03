@@ -22,6 +22,8 @@ end
 require "inquirex"
 require "rspec/its"
 
+Dir[File.expand_path("support/**/*.rb", __dir__)].each { |file| require file }
+
 RSpec.configure do |config|
   config.example_status_persistence_file_path = ".rspec_status"
   config.disable_monkey_patching!
