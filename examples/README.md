@@ -31,3 +31,11 @@ This is a more interesting example. It builds on the first, takes that definitio
 The mermaid file generated should look like this:
 
 <img src="02_readme_mermaid.png" width="300px" text-align="left"></img>
+
+### Third Example
+
+Declares completion emails with the top-level `send_email` verb (block-builder and inline keyword forms, with an `if:` gate), selects the applicable ones for a set of answers, builds `Mail::Message` objects via `#to_mail`, and demonstrates the JSON round-trip:
+
+```bash
+./examples/03_send_email.rb
+```

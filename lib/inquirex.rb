@@ -30,23 +30,16 @@ require_relative "inquirex/completion_metadata"
 require_relative "inquirex/validation/adapter"
 require_relative "inquirex/validation/null_adapter"
 
-# Post-completion actions
-require_relative "inquirex/actions"
-require_relative "inquirex/actions/template"
-require_relative "inquirex/actions/outbox"
-require_relative "inquirex/actions/base"
-require_relative "inquirex/actions/send_email"
-require_relative "inquirex/actions/webhook"
-require_relative "inquirex/actions/custom"
-require_relative "inquirex/actions/action"
-require_relative "inquirex/actions/runner"
+# Completion emails
+require_relative "inquirex/template"
+require_relative "inquirex/send_email"
 
 # DSL
 require_relative "inquirex/dsl"
 require_relative "inquirex/dsl/rule_helpers"
 require_relative "inquirex/dsl/step_builder"
 require_relative "inquirex/dsl/flow_builder"
-require_relative "inquirex/dsl/action_builder"
+require_relative "inquirex/dsl/send_email_builder"
 
 # Engine
 require_relative "inquirex/engine/state_serializer"
