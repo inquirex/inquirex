@@ -11,7 +11,7 @@
 > - [`inquirex`](https://github.com/inquirex/inquirex): the base gem that defines the graph via DSL and provides most of the backend features
 > - [`inquirex-llm`](https://github.com/inquirex/inquirex-llm): a tiny gem that extends the DSL by the word `extract` which, given a previous question answered in the form of free text, can use the model of your choice to return structured breakdown of text into answers to questions that might follow, thus shortening the form considerably.
 > - [`inquirex-tty`](https://github.com/inquirex/inquirex-tty): is the gem that renders the forms on the TUI (Terminal UI). This is also the gem that provides the CLI `inqurex` for performing various tasks such as validating DSL files, converting them from Ruby to JSON and back, and more. It is also the gem where a folder of DSL `examples` can be used to get a feel for how this works.
-> - [`inquirex-js`](https://github.com/inquirex/inquirex-js) (`npmjs` module [`@kigster/inquirex-js`](https://www.npmjs.com/package/@kigster/inquirex-js)) is the NPM package that connects web UI with the form definition in JSON format. If LLM is not needed, the entire flow becomes deterministic and collects answers as the user answers your questions, and then POSTS them to the URL of your choice.
+> - [`inquirex-widget`](https://github.com/inquirex/inquirex-js) (`npmjs` module [`inquirex-widget`](https://www.npmjs.com/package/inquirex-widget), formerly `@kigster/inquirex-js`) is the NPM package that connects web UI with the form definition in JSON format. If LLM is not needed, the entire flow becomes deterministic and collects answers as the user answers your questions, and then POSTS them to the URL of your choice.
 >
 > For a presentation about these gems and what they do please watch the [RubySF presentation](https://www.youtube.com/watch?v=iaoKW7Ap3_M&t=1s) and you can also [view the slides form the presentation](https://reinvent.one/images/talks/pdfs/2026.inquirex.pdf).
 >
@@ -51,6 +51,8 @@ This one is the core gem in the Inquirex ecosystem that focuses on:
 
 - JSON round-trip serialization for cross-platform clients
 
+- Declarative completion emails (`send_email` DSL verb — templates the host application delivers)
+
 - A structured `Answers` wrapper and Mermaid graph export (provided by `inquirex-tty` gem's CLI)
 
 - In short:
@@ -86,7 +88,7 @@ Then install:
 bundle install
 ```
 
-And then, define your form as a Ruby DSL file (see [examples](https://github.com/inquirex/inquirex-tty/tree/main/examples) on Github), and consume it by either the `inquirex-tty` gem on the command line, or on the web via the [@kigster/inqiurex-js](https://www.npmjs.com/package/@kigster/inquirex-js) npmjs package.
+And then, define your form as a Ruby DSL file (see [examples](https://github.com/inquirex/inquirex-tty/tree/main/examples) on Github), and consume it by either the `inquirex-tty` gem on the command line, or on the web via the [inquirex-widget](https://www.npmjs.com/package/inquirex-widget) npmjs package.
 
 ## Quick Start
 
@@ -147,6 +149,7 @@ engine.finished? # => true
 - `start :step_id` sets the entry step
 - `meta title:, subtitle:, brand:, theme:` adds optional frontend metadata (see [Theme](#theme-and-branding))
 - `accumulator :name, type:, default:` declares a running total (see [Accumulators](#accumulators))
+- `send_email [if: rule] do ... end` declares a completion email the host application delivers (see [Completion Emails](#completion-emails-send_email))
 
 ### Step verbs
 
@@ -498,7 +501,7 @@ Guard rails:
 - `skip` on a **display** step raises `Errors::NonCollectingStepError` (use `advance`)
 - `skip` after the flow finished raises `Errors::AlreadyFinishedError`
 
-The `skipped` list survives `to_state` / `.from_state` round-trips (string keys from JSON are normalized back to symbols), and `engine.answers_with_metadata` merges it into the answers under `:skipped` — so post-completion actions (webhook payloads, email templates) and API consumers see which values were defaults-by-skip.
+The `skipped` list survives `to_state` / `.from_state` round-trips (string keys from JSON are normalized back to symbols), and `engine.answers_with_metadata` merges it into the answers under `:skipped` — so completion email templates and API consumers see which values were defaults-by-skip.
 
 On the wire, step JSON carries `"required": false` (omitted when true, like other defaults):
 
@@ -535,58 +538,47 @@ engine.after_completion do |eng|
 end
 ```
 
-If no hook supplies one, the engine stamps the minimal core version (`engine: "inquirex"`, `engine_version: Inquirex::VERSION`). The metadata persists through `Engine#to_state` / `Engine.from_state`, and `engine.answers_with_metadata` merges it into the answers hash under `:completion_metadata` — which also makes it available to post-completion actions: webhook payloads carry it, and email templates can interpolate `{{completion_metadata.engine}}`.
+If no hook supplies one, the engine stamps the minimal core version (`engine: "inquirex"`, `engine_version: Inquirex::VERSION`). The metadata persists through `Engine#to_state` / `Engine.from_state`, and `engine.answers_with_metadata` merges it into the answers hash under `:completion_metadata` — which also makes it available to completion email templates: `{{completion_metadata.engine}}` interpolates like any other field.
 
-## Post-Completion Actions
+## Completion Emails (`send_email`)
 
-After all questions are answered, `action` declarations run server-side with the collected answers. The flagship effect is `send_email`, which **builds** `Mail::Message` objects (the same object ActionMailer wraps) and attaches them to `answers.outbox` — **nothing is delivered**; the host application decides how and when to send.
+A flow may declare emails to be sent after all questions are answered. `send_email` is a top-level DSL verb and a **declaration, not an action**: it serializes into the definition JSON under `"send_emails"`, and the host application (e.g. [qualified.at](https://qualified.at)) decides when and how to deliver. This is the only completion declaration the core DSL carries — richer post-completion behavior (webhooks, CRM pushes, custom code) belongs to the host application, not to the flow definition.
 
 ```ruby
 Inquirex.define id: "tax-intake-2025" do
-  allowed_domains "*.agentica.group"   # egress allowlist for webhook effects
-
   # ... ask steps ...
 
-  action :client_receipt, if: not_empty(:email) do
-    send_email to:      "{{email}}",
-               from:    "forms@agentica.group",
-               subject: "Thanks {{name}} — we received your intake",
-               text:    <<~TEXT,
-                 Hi {{name}},
-                 We received your answers:
+  # Sent only when the visitor left an email address.
+  send_email if: not_empty(:email) do
+    to      "{{email}}"
+    from    "forms@agentica.group"
+    subject "Thanks {{name}} — we received your intake"
+    markdown_text <<~TEXT
+      Hi {{name}},
 
-                 {{answers_summary}}
-               TEXT
-               html:    <<~HTML
-                 <p>Hi {{name}},</p>
-                 <img src="https://cdn.agentica.group/logo.png" alt="Logo">
-                 {{answers_summary}}
-               HTML
+      We received your answers and will reply within one business day.
+
+      {{answers_summary}}
+    TEXT
   end
 
-  action :admin_alert do
-    send_email to: "owner@agentica.group", from: "forms@agentica.group",
-               subject: "New lead: {{name}} <{{email}}>",
-               html: "{{answers_summary}}"
-    run { |answers, outbox| Metrics.count(:lead, answers.to_flat_h) }
-  end
-
-  action :crm_push do
-    webhook url: "https://hooks.agentica.group/inquirex",
-            headers: { "X-Api-Key" => "..." }
-  end
+  # Inline keyword form works too:
+  send_email to: "owner@agentica.group", from: "forms@agentica.group",
+             subject: "New lead: {{name}} <{{email}}>",
+             html: "{{answers_summary}}"
 end
 ```
 
-Execution and delivery:
+Selecting and building on the host:
 
 ```ruby
-answers = Inquirex::Actions.run(definition, engine.answers)
-answers.outbox.messages   # => [Mail::Message, ...]
-answers.outbox.results    # => per-action :ok / :skipped / :failed trail
+definition.send_emails    # => [Inquirex::SendEmail, ...] in declaration order
 
-# In a Rails host:
-answers.outbox.each do |message|
+applicable = definition.send_emails.select { |email| email.applicable?(engine.answers) }
+
+# Optional convenience: build Mail::Message objects (what ActionMailer wraps).
+applicable.each do |declaration|
+  message = declaration.to_mail(Inquirex::Answers.new(engine.answers))
   ActionMailer::Base.wrap_delivery_behavior(message)  # adopt Rails delivery config
   message.deliver
 end
@@ -594,14 +586,13 @@ end
 
 Key semantics:
 
-- **Templating is `{{field}}` interpolation only** — dot-notation keys resolved against `Answers#to_flat_h`, deliberately inert (no code execution), so definitions stored in a database render safely. Values interpolated into `html:` bodies are HTML-escaped automatically; `text:` bodies stay verbatim. The built-in `{{answers_summary}}` expands to all collected answers.
-- **`if:` gates** reuse the serializable rule AST (`not_empty(:email)`, ...). A false rule records `:skipped` — declare no actions (or gate them) when a flow should only save answers.
-- **`run { |answers, outbox| ... }`** is the full-Ruby escape hatch; like all lambdas it is stripped from JSON.
-- **Failures are isolated**: a raising effect records `:failed` in `outbox.results` and never blocks other actions.
+- **Nothing is delivered by the gem.** A `SendEmail` is data: templated header fields (`to`, `from`, `cc`, `bcc`, `reply_to`, `subject`, `headers`) plus body templates. `#to_mail` is a pure convenience for Ruby hosts.
+- **Templating is `{{field}}` interpolation only** — dot-notation keys resolved against `Answers#to_flat_h`, deliberately inert (no code execution), so definitions stored in a database render safely. The built-in `{{answers_summary}}` expands to all collected answers.
+- **Bodies**: `text:` renders verbatim; `html:` HTML-escapes every interpolated value automatically; `markdown_text:` is carried as Markdown on the wire — the core gem never renders Markdown to HTML (zero dependencies), hosts render it themselves. At least one body is required. In `#to_mail`, `text` (falling back to `markdown_text`) forms the plain-text part and `html` the HTML part.
+- **`if:` gates** reuse the serializable rule AST (`not_empty(:email)`, ...) and survive the JSON round-trip; hosts filter with `#applicable?(answers_hash)`.
+- Bodies accept `{ file: "path" }`, read **once at definition time** and inlined — a definition rehydrated from JSON never touches the filesystem.
 - **Images** in HTML bodies must be external URLs; attachments are unsupported.
-- The `mail` gem is a soft dependency, needed only when a message is built (Rails hosts already have it via ActionMailer).
-- **`webhook url:`** POSTs `{"answers": {...}}` as JSON to a static URL. The URL's host must be covered by `allowed_domains`, declared at the top of the definition so the flow's egress surface is auditable at a glance. The check runs inside `Definition.new` — a JSON definition whose webhook URL was tampered with fails at *rehydration*, before anything executes. Also enforced: https only (plain http just for localhost), no userinfo, no `{{field}}` templates in URLs (the destination must be static), redirects are not followed, and non-2xx responses record `:failed`.
-- Effects are extensible: `Inquirex::Actions.register(:save_record, MyEffect)` gives a new verb both DSL and JSON wire support.
+- The `mail` gem is a soft dependency, needed only when `#to_mail` is called (Rails hosts already have it via ActionMailer).
 
 ## Serialization
 
@@ -620,8 +611,7 @@ Serialized structure includes:
 - Steps and transitions
 - Rule AST payloads
 - Widget hints
-- Post-completion actions (`actions`) with their rules and effects; `run` blocks are stripped, and an action left with no serializable effects is omitted entirely
-- The `allowed_domains` egress allowlist, re-enforced against webhook URLs every time a definition is rehydrated
+- Completion email declarations (`send_emails`) with their `if:` gate rules and body templates (`text`, `markdown_text`, `html`); the key is omitted when no emails are declared
 
 Important serialization details:
 
@@ -674,6 +664,7 @@ Common exceptions under `Inquirex::Errors`:
 - `ValidationError`
 - `NonCollectingStepError`
 - `RequiredStepError`
+- `SendEmailError`
 
 ## Development
 
