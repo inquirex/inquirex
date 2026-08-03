@@ -147,4 +147,161 @@ RSpec.describe Inquirex::Engine, "#prefill!" do
       expect(restored.current_step_id).to eq(:income_types)
     end
   end
+
+  # Regression: the `prompt :auto` extraction scenario. The flow declares NO
+  # skip_if rules — prefilled questions must skip anyway, because a prefilled
+  # single-select answer is a fact, and re-asking it invites the user to
+  # overwrite a correct extraction with a stray keypress.
+  context "without skip_if rules (extract :auto scenario)" do
+    let(:definition) do
+      Inquirex.define id: "auto-extract-demo" do
+        start :residency_status
+
+        ask :residency_status do
+          type :enum
+          question "Which best describes your US tax residency?"
+          options({
+            "us_person" => "US citizen or permanent resident",
+            "resident"  => "Resident alien (substantial presence)"
+          })
+          transition to: :prior_return_available
+        end
+
+        ask :prior_return_available do
+          type :enum
+          question "Do you have a copy of your most recent tax return?"
+          options({ "yes_last_year" => "Yes, last year's return", "no" => "No" })
+          transition to: :income_types
+        end
+
+        ask :income_types do
+          type :multi_enum
+          question "Select every type of income."
+          options({ "W2" => "W-2 wages", "crypto" => "Cryptocurrency" })
+          transition to: :done
+        end
+
+        say :done do
+          text "Thanks."
+        end
+      end
+    end
+
+    it "skips a prefilled single-select question even without skip_if" do
+      engine.prefill!(residency_status: "us_person")
+      expect(engine.current_step_id).to eq(:prior_return_available)
+      expect(engine.answers[:residency_status]).to eq("us_person")
+    end
+
+    it "stops on the first question the extraction left unknown" do
+      engine.prefill!(residency_status: "us_person", income_types: ["W2"])
+      expect(engine.current_step_id).to eq(:prior_return_available)
+    end
+
+    it "never re-asks an answered question when reached via a later answer" do
+      engine.prefill!(prior_return_available: "yes_last_year")
+      expect(engine.current_step_id).to eq(:residency_status)
+      engine.answer("us_person")
+      expect(engine.current_step_id).to eq(:income_types)
+    end
+  end
+
+  # Regression: extracted values must be matched against option form VALUES,
+  # never displayed labels — and near-misses canonicalize to the value.
+  context "when canonicalizing prefilled values against options" do
+    let(:definition) do
+      Inquirex.define id: "canonical-demo" do
+        start :residency_status
+
+        ask :residency_status do
+          type :enum
+          question "Residency?"
+          options({
+            "us_person" => "US citizen or permanent resident",
+            "resident"  => "Resident alien (substantial presence)"
+          })
+          transition to: :income_types
+        end
+
+        ask :income_types do
+          type :multi_enum
+          question "Income types?"
+          options({ "W2" => "W-2 wages", "crypto" => "Cryptocurrency" })
+          transition to: :done
+        end
+
+        say :done do
+          text "Thanks."
+        end
+      end
+    end
+
+    it "keeps an exact form-value match" do
+      engine.prefill!(residency_status: "us_person")
+      expect(engine.answers[:residency_status]).to eq("us_person")
+    end
+
+    it "canonicalizes a case variant to the form value" do
+      engine.prefill!(residency_status: "US_PERSON")
+      expect(engine.answers[:residency_status]).to eq("us_person")
+    end
+
+    it "canonicalizes a display label to the form value" do
+      engine.prefill!(residency_status: "US citizen or permanent resident")
+      expect(engine.answers[:residency_status]).to eq("us_person")
+    end
+
+    it "drops a value that matches neither value nor label, and still asks" do
+      engine.prefill!(residency_status: "alien overlord")
+      expect(engine.answers).not_to have_key(:residency_status)
+      expect(engine.current_step_id).to eq(:residency_status)
+    end
+
+    it "canonicalizes multi-select suggestions entry by entry" do
+      engine.prefill!(residency_status: "us_person",
+        income_types: ["W-2 wages", "CRYPTO", "bitcoin mining"])
+      expect(engine.suggestion_for(:income_types)).to eq(%w[W2 crypto])
+    end
+
+    it "records no suggestion when every entry is junk" do
+      engine.prefill!(income_types: ["bitcoin mining"])
+      expect(engine.suggestion_for(:income_types)).to be_nil
+    end
+
+    it "stores schema-only keys (no matching step) verbatim" do
+      engine.prefill!(confidence: 0.87)
+      expect(engine.answers[:confidence]).to eq(0.87)
+    end
+  end
+
+  # Prefilled answers must feed accumulators exactly like typed answers —
+  # a skipped-because-extracted step still contributes to pricing.
+  context "when a prefilled answer feeds an accumulator" do
+    let(:definition) do
+      Inquirex.define id: "prefill-price-demo" do
+        accumulator :price, default: 0
+
+        start :filing_status
+
+        ask :filing_status do
+          type :enum
+          question "Filing status?"
+          options({ "single" => "Single", "married" => "Married" })
+          price lookup: { "single" => 100, "married" => 150 }
+          transition to: :done
+        end
+
+        say :done do
+          text "Thanks."
+        end
+      end
+    end
+
+    it "applies the accumulation when the value prefills" do
+      engine.prefill!(filing_status: "Married")
+      expect(engine.answers[:filing_status]).to eq("married")
+      expect(engine.total(:price)).to eq(150)
+      expect(engine.current_step_id).to eq(:done)
+    end
+  end
 end

@@ -165,14 +165,21 @@ module Inquirex
 
     # Merges a hash of { step_id => value } into the top-level answers without
     # clobbering answers the user has already provided. Used by LLM clarify
-    # steps to populate downstream answers from free-text extraction so that
-    # `skip_if not_empty(:id)` rules on later steps will fire.
+    # steps to populate downstream answers from free-text extraction; a
+    # prefilled question is treated as answered and is never asked again.
     #
     # Nil/empty values in the hash are ignored so that "unknown" LLM outputs
     # don't spuriously satisfy `not_empty` rules.
     #
-    # If the engine's current step becomes skippable as a result of the prefill,
-    # it auto-advances past it.
+    # Values for steps with options (enum / multi_enum) are canonicalized via
+    # Node#resolve_option — matching is against the option's form VALUE, with
+    # a case-insensitive fallback and a label fallback ("US citizen or
+    # permanent resident" resolves to "us_person"). A value that matches
+    # neither value nor label is dropped, so junk never enters the answers.
+    #
+    # Prefilled answers contribute to accumulators exactly like typed ones,
+    # and if the engine's current step becomes skippable as a result of the
+    # prefill, it auto-advances past it.
     #
     # @param hash [Hash] answers keyed by step id
     # @return [Hash] the updated answers
@@ -185,13 +192,9 @@ module Inquirex
 
         sym = key.to_sym
         if multi_select_step?(sym)
-          # Multi-select extraction is a hint, not a fact: the user may have
-          # more selections in mind than the text revealed. Record it as a
-          # suggestion so renderers pre-check the choices while the question
-          # is still asked; skip_if rules see no answer and do not fire.
-          @suggestions[sym] = Array(value) unless @answers.key?(sym)
+          prefill_suggestion(sym, value)
         else
-          @answers[sym] = value unless @answers.key?(sym)
+          prefill_answer(sym, value)
         end
       end
       skip_if_needed unless finished?
@@ -367,12 +370,44 @@ module Inquirex
       @completion_metadata = CompletionMetadata.new(engine: "inquirex", engine_version: VERSION)
     end
 
-    # Auto-skips the current step if its skip_if rule is satisfied.
+    # Multi-select extraction is a hint, not a fact: the user may have more
+    # selections in mind than the text revealed. Record it as a suggestion so
+    # renderers pre-check the choices while the question is still asked;
+    # skip_if rules see no answer and do not fire. Each entry is
+    # canonicalized against the step's option values; unmatchable entries
+    # are dropped, and an all-junk extraction records no suggestion.
+    def prefill_suggestion(sym, value)
+      return if @answers.key?(sym)
+
+      node = @definition.step(sym)
+      resolved = Array(value).filter_map { |entry| node.resolve_option(entry) }
+      @suggestions[sym] = resolved unless resolved.empty?
+    end
+
+    # Single-value extraction is deterministic: the canonicalized value is
+    # recorded as the answer (feeding accumulators like a typed answer), and
+    # the question will be auto-skipped when reached. Unknown keys — schema
+    # fields with no matching step, e.g. a confidence score — are stored
+    # verbatim so rules can still read them.
+    def prefill_answer(sym, value)
+      return if @answers.key?(sym)
+
+      node = @definition.step_ids.include?(sym) ? @definition.step(sym) : nil
+      resolved = node ? node.resolve_option(value) : value
+      return if resolved.nil?
+
+      @answers[sym] = resolved
+      apply_accumulations(node, resolved) if node
+    end
+
+    # Auto-skips the current step when its skip_if rule is satisfied, or when
+    # it is a collecting step whose answer already exists (prefilled by an
+    # LLM extraction) — an answered question is never asked again.
     def skip_if_needed
       return if finished?
 
       node = @definition.step(@current_step_id)
-      return unless node.skip?(@answers)
+      return unless node.skip?(@answers) || (node.collecting? && @answers.key?(@current_step_id))
 
       advance_step
     end
