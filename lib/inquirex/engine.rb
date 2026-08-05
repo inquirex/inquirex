@@ -74,6 +74,23 @@ module Inquirex
       @totals[name.to_sym] || 0
     end
 
+    # The running narrative of a `:text` accumulator — everything the user was
+    # shown and everything they answered, in the order it happened. This is
+    # what an LLM `summarize` step reads.
+    #
+    # @param name [Symbol] text accumulator name (e.g. :transcript)
+    # @return [String] empty when nothing has been captured yet
+    def text(name)
+      @totals[name.to_sym].to_s
+    end
+
+    # Every text accumulator's running narrative, keyed by name.
+    #
+    # @return [Hash{Symbol => String}]
+    def texts
+      text_accumulator_names.to_h { |name| [name, text(name)] }
+    end
+
     # @return [Node, nil] current step node, or nil if flow is finished
     def current_step
       return nil if finished?
@@ -101,9 +118,11 @@ module Inquirex
       result = @validator.validate(current_step, value)
       raise Errors::ValidationError, "Validation failed: #{result.errors.join(", ")}" unless result.valid?
 
+      node = current_step
       @answers[@current_step_id] = value
       @suggestions.delete(@current_step_id)
-      apply_accumulations(current_step, value)
+      apply_accumulations(node, value)
+      capture_transcript(Transcript.answer_entry(node, value))
       advance_step
     end
 
@@ -113,6 +132,8 @@ module Inquirex
     def advance
       raise Errors::AlreadyFinishedError, "Flow is already finished" if finished?
 
+      node = current_step
+      capture_transcript(Transcript.display_entry(node)) if node.display?
       advance_step
     end
 
@@ -152,6 +173,7 @@ module Inquirex
       end
       @skipped << @current_step_id unless @skipped.include?(@current_step_id)
       @suggestions.delete(@current_step_id)
+      capture_transcript(Transcript.skipped_entry(node))
       advance_step
     end
 
@@ -319,6 +341,30 @@ module Inquirex
       node.accumulations.each do |accumulation|
         @totals[accumulation.target] ||= 0
         @totals[accumulation.target] += accumulation.contribution(answer)
+      end
+    end
+
+    # @return [Array<Symbol>] names of the flow's :text accumulators
+    def text_accumulator_names
+      @definition.accumulators.filter_map { |name, acc| name if acc.text? }
+    end
+
+    # Appends one narrative entry to every text accumulator the flow declares.
+    #
+    # Called only from #answer, #skip, and #advance — the three points at
+    # which the user has actually seen or done something. Steps the engine
+    # elides on its own (skip_if, or a question already answered by an
+    # extraction) pass through #advance_step instead and are correctly absent
+    # from the narrative.
+    #
+    # @param entry [String, nil] formatted entry, or nil for nothing to record
+    # @return [void]
+    def capture_transcript(entry)
+      return if entry.nil? || entry.empty?
+
+      text_accumulator_names.each do |name|
+        existing = @totals[name].to_s
+        @totals[name] = existing.empty? ? entry : "#{existing}\n\n#{entry}"
       end
     end
 

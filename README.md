@@ -305,6 +305,41 @@ end
 
 A single step can contribute to any number of accumulators.
 
+### Text accumulators: the session transcript
+
+An accumulator declared `type: :text` accumulates prose instead of a running total, and — unlike every other kind — nothing declares `accumulate` into it. The engine fills it in on its own:
+
+```ruby
+Inquirex.define id: "depreciation-help" do
+  accumulator :transcript, type: :text
+  start :intro
+
+  say(:intro) { text "Depreciation spreads an asset's cost over its useful life."; transition to: :asset_kind }
+  ask :asset_kind do
+    type :enum
+    question "What kind of asset?"
+    options vehicle: "A vehicle", building: "A building"
+  end
+end
+```
+
+After the user advances past `:intro` and answers `:asset_kind`:
+
+```ruby
+engine.text(:transcript)
+# => "Depreciation spreads an asset's cost over its useful life.\n\nQ: What kind of asset?\nA: A vehicle"
+```
+
+Three things it deliberately does:
+
+- **Records only what was shown.** A step elided by `skip_if`, or a question auto-skipped because an extraction already answered it, was never on screen and never appears. The narrative is a record of the session, not of the graph.
+- **Renders answers as the user saw them.** Option values resolve to their labels, so it reads `A: Married filing jointly`, not `A: married_filing_jointly`. Booleans read `Yes`/`No`.
+- **Starts at `""`, not `0`.** `default:` is optional and defaults to the type's own zero.
+
+This exists because a flow that mostly *tells* the user things — a help flow, an explainer — collects almost no answers, so the answers hash says nothing about what the session contained. The transcript does, which is what makes such a flow summarizable. It is what [`inquirex-llm`](https://github.com/inquirex/inquirex-llm)'s `summarize` verb reads; a flow carrying a `summarize` step gets a `:transcript` accumulator automatically if it has not declared one.
+
+Read one with `engine.text(:name)`, or all of them with `engine.texts`.
+
 ### The `price` sugar
 
 Since `:price` is the most common use case (lead qualification, tax prep, SaaS quotes), there's a one-liner:
