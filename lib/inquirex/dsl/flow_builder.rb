@@ -23,10 +23,17 @@ module Inquirex
       # The `:price` accumulator is the common lead-qualification use case; others
       # (e.g. :complexity, :credit_score) work identically.
       #
-      # @param name [Symbol] e.g. :price
+      # A `:text` accumulator is filled by the engine rather than by
+      # `accumulate` declarations: it collects everything the user was shown
+      # and every answer they gave, which is what an LLM `summarize` step
+      # reads. See {Accumulator}.
+      #
+      # @param name [Symbol] e.g. :price, :transcript
       # @param type [Symbol] one of Node::TYPES (default :currency-ish: :decimal)
-      # @param default [Numeric] starting value (default: 0)
-      def accumulator(name, type: :decimal, default: 0)
+      # @param default [Numeric, String, nil] starting value; nil (the default)
+      #   takes the type's own zero, so a :text accumulator starts at "" and
+      #   every other kind starts at 0
+      def accumulator(name, type: :decimal, default: nil)
         sym = name.to_sym
         @accumulators[sym] = Accumulator.new(name: sym, type:, default:)
       end

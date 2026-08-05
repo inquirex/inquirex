@@ -5,9 +5,18 @@ module Inquirex
   # flows accumulate into as the user answers questions. Pure data, serializable
   # to JSON, evaluated identically on Ruby and JS sides.
   #
+  # A `:text` accumulator is different in kind: nothing declares `accumulate`
+  # into it, and no Accumulation ever targets it. The Engine appends to it
+  # automatically as the user moves through the flow — every display step's
+  # text, and every question with the answer given to it. That running
+  # narrative is what an LLM `summarize` step reads, and it is the only way a
+  # flow that mostly *tells* the user things (a help or explainer flow) has
+  # anything to summarize at all: such a flow collects few answers, so the
+  # answers hash alone says nothing about what the user was shown.
+  #
   # @attr_reader name [Symbol] accumulator identifier (e.g. :price)
-  # @attr_reader type [Symbol] one of Node::TYPES (typically :currency, :integer, :decimal)
-  # @attr_reader default [Numeric] starting value (default: 0)
+  # @attr_reader type [Symbol] one of Node::TYPES (typically :currency, :integer, :decimal, :text)
+  # @attr_reader default [Numeric, String] starting value (0, or "" when :text)
   #
   # @example Declare a running price total and contribute to it from a step
   #   Inquirex.define do
@@ -17,17 +26,38 @@ module Inquirex
   #       accumulate :price, per_unit: 50
   #     end
   #   end
+  #
+  # @example Declare a transcript the engine fills in on its own
+  #   Inquirex.define do
+  #     accumulator :transcript, type: :text
+  #     say(:intro) { text "Here is how depreciation works." }
+  #   end
+  #   # engine.advance
+  #   # engine.text(:transcript)  # => "Here is how depreciation works."
   class Accumulator
+    # The accumulator type whose running value is appended prose rather than
+    # a running total. See the class docs for why it exists.
+    TEXT_TYPE = :text
+
     attr_reader :name, :type, :default
 
     # @param name [Symbol, String] accumulator identifier
     # @param type [Symbol, String] value type, one of Node::TYPES
-    # @param default [Numeric] starting value before any contributions
-    def initialize(name:, type: :decimal, default: 0)
+    # @param default [Numeric, String, nil] starting value before any
+    #   contributions; nil selects the type's own zero ("" for :text, else 0)
+    def initialize(name:, type: :decimal, default: nil)
       @name = name.to_sym
       @type = type.to_sym
-      @default = default
+      @default = default.nil? ? zero_value : default
       freeze
+    end
+
+    # Whether this accumulator accumulates prose rather than a running total.
+    # Text accumulators are filled by the Engine, never by an Accumulation.
+    #
+    # @return [Boolean]
+    def text?
+      @type == TEXT_TYPE
     end
 
     # Serializes the accumulator to its wire format. The name is omitted —
@@ -44,11 +74,23 @@ module Inquirex
     # @param hash [Hash] type/default attributes (string or symbol keys)
     # @return [Accumulator]
     def self.from_h(name, hash)
+      # `fetch`, not `||` — a text accumulator's serialized default is "",
+      # which `||` would discard in favour of the numeric zero.
+      default = hash.fetch("default") { hash.fetch(:default, nil) }
       new(
         name:    name,
         type:    hash["type"] || hash[:type] || :decimal,
-        default: hash["default"] || hash[:default] || 0
+        default: default
       )
+    end
+
+    private
+
+    # The starting value implied by the type when none was declared.
+    #
+    # @return [Numeric, String]
+    def zero_value
+      text? ? "" : 0
     end
   end
 
