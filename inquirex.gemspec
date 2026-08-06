@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
   spec.authors = ["Konstantin Gredeskoul"]
   spec.email = ["kigster@gmail.com"]
 
-  spec.summary = "A declarative, rules-driven questionnaire engine for building conditionally-branching intake forms, qualification wizards, and surveys in pure Ruby, with additional plugins providing LLM/AI support. See inquirex-llm.."
+  spec.summary = "A declarative, rules-driven questionnaire engine for building conditionally-branching intake forms, qualification wizards, and surveys in pure Ruby, with additional plugins providing LLM/AI support. See inquirex-llm."
   spec.description = "Inquirex lets you define multi-step questionnaires as directed graphs with conditional branching, using a conversational DSL (ask, say, mention) and an AST-based rule system (contains, equals, greater_than, all, any). The engine walks the graph, collects structured answers, and serializes everything to JSON — making it the ideal backbone for cross-platform intake forms where the frontend is a chat widget, a terminal, or a mobile app. Framework-agnostic, no third-party dependencies, thread-safe immutable definitions."
   spec.homepage = "https://github.com/inquirex/inquirex"
   spec.license = "MIT"
