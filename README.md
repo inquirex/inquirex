@@ -656,6 +656,47 @@ Important serialization details:
 - `required: false` step flag is preserved (omitted when true, the default)
 - Snake-case theme keys are converted to camelCase on serialization to match the JS widget contract
 
+## Loading Flows from Source (`load_dsl`)
+
+`Inquirex.load_dsl` evaluates a string of DSL and returns the `Definition`:
+
+```ruby
+definition = Inquirex.load_dsl(File.read("flow.rb"))
+```
+
+An `eval` is fine for a file in your own repository. It is not fine for a string that came from anywhere else — a column a customer edits, an upload, an LLM, a visual builder's "sync" button. Evaluating that unguarded is arbitrary code execution in the process that loads the flow.
+
+**Since 0.7.0, `load_dsl` validates before it evaluates.** Source is parsed with Prism and walked against `Inquirex::SafeSource::Vocabulary`, a **default-deny** allowlist of the real DSL: a word nobody declared is a violation, not an oversight. Only source that matches the vocabulary with literal arguments gets past it.
+
+```ruby
+Inquirex.load_dsl(customer.flow_dsl)                       # validates, then evaluates
+Inquirex.load_dsl(File.read("flow.rb"), unsafe: true)      # your own file: skip validation
+```
+
+Audit stored definitions without loading them — the answer is "would `load_dsl` accept this?", which is what you want before a deploy tightens the allowlist:
+
+```ruby
+Qualifier.find_each do |q|
+  violations = Inquirex::SafeSource.validate(q.flow_dsl)
+  puts "REJECT #{q.id}: #{violations.join("; ")}" if violations.any?
+end
+
+Inquirex::SafeSource.safe?(source)   # => true / false
+```
+
+Two ceilings bound the work handed to the parser, both adjustable:
+
+```ruby
+Inquirex::SafeSource.max_source_bytes = 256 * 1024   # default 64 KiB
+Inquirex::SafeSource.max_depth = 32                  # default 24
+```
+
+### What this means for existing flows
+
+This is the one change most likely to surprise you: **DSL that evaluated in 0.6.x can be rejected in 0.7.0+.** A flow using a construct outside the vocabulary — a top-level constant, a helper method, a computed value — now fails to load rather than silently running. That is the intended behaviour, but it is a real break; run `SafeSource.validate` over your stored flows before upgrading.
+
+Downstream gems extend the vocabulary at boot rather than forking it, so `require "inquirex-llm"` teaches it `extract`, `clarify`, and `summarize` automatically.
+
 ## Answers Wrapper
 
 `Inquirex::Answers` provides structured answer access:
