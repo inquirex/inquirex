@@ -86,6 +86,35 @@ module Inquirex
       COLLECTING_VERBS.include?(@verb)
     end
 
+    # Canonicalizes a raw value against this step's options: an exact value
+    # match wins, then a case-insensitive value match, then a case-insensitive
+    # label match — LLM extractions and humans often answer with the friendly
+    # label ("US citizen or permanent resident") when the form value is the
+    # canonical key ("us_person"). Matching is always resolved TO the form
+    # value, never the label. Steps without options return the value
+    # unchanged; an unmatchable value returns nil rather than polluting
+    # answers with junk that would satisfy not_empty rules.
+    #
+    # @example
+    #   node.options                                             # => ["us_person", "resident"]
+    #   node.resolve_option("us_person")                         # => "us_person"
+    #   node.resolve_option("US_PERSON")                         # => "us_person"
+    #   node.resolve_option("US citizen or permanent resident")  # => "us_person"
+    #   node.resolve_option("alien overlord")                    # => nil
+    #
+    # @param raw [Object] candidate value (String, Symbol, ...)
+    # @return [String, Object, nil] the canonical option value; the raw value
+    #   unchanged for steps without options; nil when nothing matches
+    def resolve_option(raw)
+      return raw if @options.nil? || @options.empty?
+      return nil if raw.nil?
+
+      candidate = raw.to_s
+      @options.find { |value| value == candidate } ||
+        @options.find { |value| value.casecmp?(candidate) } ||
+        @option_labels&.find { |_value, label| label.casecmp?(candidate) }&.first
+    end
+
     # @return [Boolean] true if this step only displays content (no input)
     def display?
       DISPLAY_VERBS.include?(@verb)

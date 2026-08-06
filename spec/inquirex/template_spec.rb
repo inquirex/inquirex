@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe Inquirex::Actions::Template do
+RSpec.describe Inquirex::Template do
   subject(:answers) do
     Inquirex::Answers.new(
       name:         "Ada & Co",

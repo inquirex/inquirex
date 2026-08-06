@@ -16,28 +16,24 @@ module Inquirex
         @nodes = {}
         @meta = {}
         @accumulators = {}
-        @actions = []
-        @allowed_domains = []
-      end
-
-      # Declares the domains outbound effects (webhook) may send answers to.
-      # Conventionally the first declaration in a definition, so the flow's
-      # egress surface is auditable at a glance. "example.com" matches that
-      # host exactly; "*.example.com" matches its subdomains.
-      #
-      # @param domains [Array<String>]
-      def allowed_domains(*domains)
-        @allowed_domains.concat(domains.flatten)
+        @send_emails = []
       end
 
       # Declares a named running total the flow accumulates into as answers come in.
       # The `:price` accumulator is the common lead-qualification use case; others
       # (e.g. :complexity, :credit_score) work identically.
       #
-      # @param name [Symbol] e.g. :price
+      # A `:text` accumulator is filled by the engine rather than by
+      # `accumulate` declarations: it collects everything the user was shown
+      # and every answer they gave, which is what an LLM `summarize` step
+      # reads. See {Accumulator}.
+      #
+      # @param name [Symbol] e.g. :price, :transcript
       # @param type [Symbol] one of Node::TYPES (default :currency-ish: :decimal)
-      # @param default [Numeric] starting value (default: 0)
-      def accumulator(name, type: :decimal, default: 0)
+      # @param default [Numeric, String, nil] starting value; nil (the default)
+      #   takes the type's own zero, so a :text accumulator starts at "" and
+      #   every other kind starts at 0
+      def accumulator(name, type: :decimal, default: nil)
         sym = name.to_sym
         @accumulators[sym] = Accumulator.new(name: sym, type:, default:)
       end
@@ -116,33 +112,45 @@ module Inquirex
         add_step(id, :confirm, &)
       end
 
-      # Declares a named post-completion action: effects (send_email, run, ...)
-      # executed server-side after the flow finishes, with the collected
-      # answers. Runs in declaration order; gate with a serializable rule via
-      # the if: option.
+      # Declares an email the host application builds and delivers after the
+      # flow finishes, from the collected answers. Declarations run in order;
+      # gate with a serializable rule via the if: option. This is the only
+      # completion declaration the core DSL carries — richer post-completion
+      # behavior belongs to the host application.
       #
-      # @example Email the collected answers when business income was selected
-      #   action :notify_sales, if: Rules::Contains.new(:income_types, "Business") do
-      #     send_email to: "sales@example.com",
-      #                subject: "New lead: {{name}}",
-      #                html: "{{answers_summary}}"
+      # @example Receipt sent only when the visitor left an email address
+      #   send_email if: not_empty(:email) do
+      #     to      "{{email}}"
+      #     from    "forms@agentica.group"
+      #     subject "Thanks {{name}} — we got your inquiry"
+      #     markdown_text <<~TEXT
+      #       Hi {{name}},
+      #
+      #       We received your answers and will reply within one business day.
+      #
+      #       {{answers_summary}}
+      #     TEXT
       #   end
       #
-      # @param id [Symbol] action identifier
-      # @param opts [Hash] only if: is recognized — a Rules::Base gate
-      # @yield block evaluated in ActionBuilder (send_email, run, ...)
-      def action(id, **opts, &block)
+      # @param opts [Hash] if: takes a Rules::Base gate; any remaining keys are
+      #   SendEmail fields (to:, subject:, text:, ...) for the inline form
+      # @yield block evaluated in SendEmailBuilder (to, from, subject, ...);
+      #   block values override same-named inline keys
+      # @return [void]
+      # @raise [Errors::DefinitionError] on unknown fields or missing to:/subject:/body
+      def send_email(**opts, &block)
         rule = opts.delete(:if)
-        raise Errors::DefinitionError, "Unknown action options: #{opts.keys.inspect}" unless opts.empty?
-
-        sym = id.to_sym
-        if @actions.any? { |a| a.id == sym }
-          raise Errors::DefinitionError, "Duplicate action id: #{sym.inspect}"
+        params = opts
+        if block
+          builder = SendEmailBuilder.new
+          builder.instance_eval(&block)
+          params = params.merge(builder.params)
         end
-
-        builder = ActionBuilder.new
-        builder.instance_eval(&block) if block
-        @actions << builder.build(sym, rule:)
+        begin
+          @send_emails << SendEmail.new(**params, rule:)
+        rescue ArgumentError => e
+          raise Errors::DefinitionError, "send_email: #{e.message}"
+        end
       end
 
       # Produces the frozen Definition.
@@ -154,14 +162,13 @@ module Inquirex
         raise Errors::DefinitionError, "No steps defined" if @nodes.empty?
 
         Definition.new(
-          start_step_id:   @start_step_id,
-          nodes:           @nodes,
-          id:              @flow_id,
-          version:         @flow_version,
-          meta:            @meta,
-          accumulators:    @accumulators,
-          actions:         @actions,
-          allowed_domains: @allowed_domains
+          start_step_id: @start_step_id,
+          nodes:         @nodes,
+          id:            @flow_id,
+          version:       @flow_version,
+          meta:          @meta,
+          accumulators:  @accumulators,
+          send_emails:   @send_emails
         )
       end
 

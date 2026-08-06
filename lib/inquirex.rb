@@ -21,6 +21,7 @@ require_relative "inquirex/widget_registry"
 require_relative "inquirex/transition"
 require_relative "inquirex/evaluator"
 require_relative "inquirex/accumulator"
+require_relative "inquirex/transcript"
 require_relative "inquirex/node"
 require_relative "inquirex/definition"
 require_relative "inquirex/answers"
@@ -30,23 +31,20 @@ require_relative "inquirex/completion_metadata"
 require_relative "inquirex/validation/adapter"
 require_relative "inquirex/validation/null_adapter"
 
-# Post-completion actions
-require_relative "inquirex/actions"
-require_relative "inquirex/actions/template"
-require_relative "inquirex/actions/outbox"
-require_relative "inquirex/actions/base"
-require_relative "inquirex/actions/send_email"
-require_relative "inquirex/actions/webhook"
-require_relative "inquirex/actions/custom"
-require_relative "inquirex/actions/action"
-require_relative "inquirex/actions/runner"
+# Completion emails
+require_relative "inquirex/template"
+require_relative "inquirex/send_email"
 
 # DSL
 require_relative "inquirex/dsl"
 require_relative "inquirex/dsl/rule_helpers"
 require_relative "inquirex/dsl/step_builder"
 require_relative "inquirex/dsl/flow_builder"
-require_relative "inquirex/dsl/action_builder"
+require_relative "inquirex/dsl/send_email_builder"
+
+# Source validation — loads after the DSL builders, whose public methods the
+# allowlist reflects on so it cannot drift from the real vocabulary.
+require_relative "inquirex/safe_source"
 
 # Engine
 require_relative "inquirex/engine/state_serializer"
@@ -108,16 +106,47 @@ module Inquirex
   # Evaluates a string of DSL code and returns the resulting definition.
   # Intended for loading flow definitions from files or stored text.
   #
+  # This is an `eval`. Whenever the text comes from anywhere other than your
+  # own repository — a database column a customer edits, an upload, an LLM, a
+  # visual builder — evaluating it unguarded is arbitrary code execution in
+  # the loading process. {SafeSource.validate!} therefore runs **before** the
+  # eval unless you opt out; the ordering is the whole point.
+  #
+  # `unsafe: true` is for source you control as code: a `.rb` file in your own
+  # repository, a fixture, the file a CLI was pointed at. It is named `unsafe`
+  # rather than `safe: false` so the dangerous call is the conspicuous one.
+  #
+  # @example Stored, customer-authored DSL (validated)
+  #   Inquirex.load_dsl(qualifier.flow_dsl)
+  #
+  # @example Your own file (validation skipped)
+  #   Inquirex.load_dsl(File.read("flow.rb"), unsafe: true)
+  #
   # @param text [String] Ruby source containing Inquirex.define { ... }
+  # @param unsafe [Boolean] skip validation — only for source you authored
+  # @param max_bytes [Integer] source size ceiling for validation
+  # @param max_depth [Integer] AST nesting ceiling for validation
   # @return [Definition]
+  # @raise [Errors::UnsafeSourceError] when the source leaves the allowlist
   # @raise [Errors::DefinitionError] on syntax or evaluation errors
-  def self.load_dsl(text)
-    # rubocop:disable Security/Eval
-    eval(text, TOPLEVEL_BINDING.dup, "(dsl)", 1)
-    # rubocop:enable Security/Eval
-  rescue SyntaxError => e
-    raise Errors::DefinitionError, "DSL syntax error: #{e.message}"
-  rescue StandardError => e
-    raise Errors::DefinitionError, "DSL evaluation error: #{e.message}"
+  def self.load_dsl(text,
+    unsafe: false,
+    max_bytes: SafeSource.max_source_bytes,
+    max_depth: SafeSource.max_depth)
+    SafeSource.validate!(text, max_bytes:, max_depth:) unless unsafe
+
+    begin
+      # Deliberate eval: the flow DSL *is* Ruby, so there is nothing else to
+      # evaluate it with. Reaching this line means either SafeSource accepted
+      # the source against a default-deny allowlist (above), or the caller
+      # asserted `unsafe: true` for source it authored itself.
+      # rubocop:disable Security/Eval
+      eval(text, TOPLEVEL_BINDING.dup, "(dsl)", 1)
+      # rubocop:enable Security/Eval
+    rescue SyntaxError => e
+      raise Errors::DefinitionError, "DSL syntax error: #{e.message}"
+    rescue StandardError => e
+      raise Errors::DefinitionError, "DSL evaluation error: #{e.message}"
+    end
   end
 end

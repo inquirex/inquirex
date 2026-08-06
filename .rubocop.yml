@@ -104,3 +104,17 @@ Style/OpenStructUse:
   Exclude:
     - "lib/inquirex/completion_metadata.rb"
     - "spec/inquirex/completion_metadata_spec.rb"
+
+# Flow DSL uses non-interpolating heredocs on purpose, including where there is
+# nothing to interpolate today.
+#
+# In the payload corpus the premise is that what the validator sees is literally
+# what is on the page; letting RuboCop strip the quotes off the "harmless" ones
+# is how a payload silently stops being a payload. In the examples, `<<~'TEXT'`
+# is the documented way to write a `send_email` body — a plain heredoc would let
+# Ruby resolve `#{}` before the template ever reached the host, which is exactly
+# the hole SafeSource closes.
+Style/RedundantHeredocDelimiterQuotes:
+  Exclude:
+    - "spec/support/dsl_payloads.rb"
+    - "examples/**/*.rb"

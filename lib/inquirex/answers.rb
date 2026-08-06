@@ -90,16 +90,6 @@ module Inquirex
       @data.size
     end
 
-    # Mail::Message objects (and result trail) built by post-completion
-    # actions. Deliberately excluded from #to_h, #to_flat_h, #to_json and
-    # #== — the outbox rides alongside the answer data, never inside it.
-    # Delivery is the host application's responsibility.
-    #
-    # @return [Actions::Outbox]
-    def outbox
-      @outbox ||= Actions::Outbox.new
-    end
-
     # Merge another hash or Answers into this one (returns new Answers instance).
     #
     # @param other [Hash, Answers]

@@ -32,8 +32,25 @@ module Inquirex
     # Raised when serializing or deserializing a Definition to/from JSON fails.
     class SerializationError < Error; end
 
-    # Raised when a post-completion action cannot execute structurally,
-    # e.g. send_email is used without the mail gem installed.
-    class ActionError < Error; end
+    # Raised when DSL source contains anything outside the flow-DSL allowlist,
+    # i.e. when it is not safe to `eval`. See Inquirex::SafeSource.
+    #
+    # Subclasses DefinitionError on purpose: hosts that already rescue that
+    # class and render the message keep working, and a rejected payload reads
+    # as "invalid DSL" rather than as a crash.
+    class UnsafeSourceError < DefinitionError
+      # @return [Array<String>] every violation found, most useful first
+      attr_reader :violations
+
+      # @param violations [Array<String>, String] human-readable violation messages
+      def initialize(violations)
+        @violations = Array(violations)
+        super("DSL rejected: #{@violations.join("; ")}")
+      end
+    end
+
+    # Raised when a SendEmail cannot build its message structurally,
+    # e.g. SendEmail#to_mail is called without the mail gem installed.
+    class SendEmailError < Error; end
   end
 end

@@ -19,8 +19,7 @@ module Inquirex
       :start_step_id,
       :steps,
       :accumulators,
-      :actions,
-      :allowed_domains
+      :send_emails
 
     # @param start_step_id [Symbol] id of the initial step
     # @param nodes [Hash<Symbol, Node>] all steps keyed by id
@@ -28,20 +27,18 @@ module Inquirex
     # @param version [String] semver
     # @param meta [Hash] frontend metadata
     # @param accumulators [Hash<Symbol, Accumulator>] named running totals
-    # @param actions [Array<Actions::Action>] post-completion actions, in order
-    # @param allowed_domains [Array<String>] hosts outbound effects (webhook)
-    #   may send answers to; "example.com" exact, "*.example.com" subdomains
+    # @param send_emails [Array<SendEmail>] emails the host application builds
+    #   after completion, in declaration order
     # @raise [Errors::DefinitionError] if start_step_id is not present in nodes
     def initialize(start_step_id:, nodes:, id: nil, version: "1.0.0", meta: {},
-      accumulators: {}, actions: [], allowed_domains: [])
+      accumulators: {}, send_emails: [])
       @id = id
       @version = version
       @meta = meta.freeze
       @start_step_id = start_step_id.to_sym
       @steps = nodes.freeze
       @accumulators = accumulators.freeze
-      @actions = actions.freeze
-      @allowed_domains = normalize_domains(allowed_domains)
+      @send_emails = send_emails.freeze
       validate!
       freeze
     end
@@ -63,25 +60,6 @@ module Inquirex
       @steps.keys
     end
 
-    # Whether a host is covered by the allowed_domains declaration.
-    # "example.com" matches that host exactly; "*.example.com" matches any
-    # subdomain but not the apex. Matching is case-insensitive; an empty
-    # allowlist allows nothing.
-    #
-    # @example With allowed_domains ["*.example.com"]
-    #   definition.allowed_host?("api.example.com") # => true
-    #   definition.allowed_host?("API.EXAMPLE.COM") # => true (case-insensitive)
-    #   definition.allowed_host?("example.com")     # => false (wildcard excludes the apex)
-    #
-    # @param host [String]
-    # @return [Boolean]
-    def allowed_host?(host)
-      target = host.to_s.downcase
-      @allowed_domains.any? do |entry|
-        entry.start_with?("*.") ? target.end_with?(entry[1..]) : target == entry
-      end
-    end
-
     # Serializes the definition to a JSON string.
     # Lambdas (default procs, compute blocks) are silently stripped.
     #
@@ -98,7 +76,6 @@ module Inquirex
       hash["id"] = @id if @id
       hash["version"] = @version
       hash["meta"] = @meta unless @meta.empty?
-      hash["allowed_domains"] = @allowed_domains unless @allowed_domains.empty?
       hash["start"] = @start_step_id.to_s
       unless @accumulators.empty?
         hash["accumulators"] = @accumulators.each_with_object({}) do |(name, acc), h|
@@ -106,8 +83,7 @@ module Inquirex
         end
       end
       hash["steps"] = @steps.transform_keys(&:to_s).transform_values(&:to_h)
-      serializable_actions = @actions.select(&:serializable?)
-      hash["actions"] = serializable_actions.map(&:to_h) unless serializable_actions.empty?
+      hash["send_emails"] = @send_emails.map(&:to_h) unless @send_emails.empty?
       hash
     end
 
@@ -132,8 +108,7 @@ module Inquirex
       start = hash["start"] || hash[:start]
       steps_data = hash["steps"] || hash[:steps] || {}
       acc_data = hash["accumulators"] || hash[:accumulators] || {}
-      actions_data = hash["actions"] || hash[:actions] || []
-      domains = hash["allowed_domains"] || hash[:allowed_domains] || []
+      emails_data = hash["send_emails"] || hash[:send_emails] || []
 
       nodes = steps_data.each_with_object({}) do |(step_id, step_hash), acc|
         sym_id = step_id.to_sym
@@ -145,7 +120,7 @@ module Inquirex
         h[sym] = Accumulator.from_h(sym, entry)
       end
 
-      actions = actions_data.map { |entry| Actions::Action.from_h(entry) }
+      send_emails = emails_data.map { |entry| SendEmail.from_h(entry) }
 
       new(start_step_id: start,
         nodes:,
@@ -153,32 +128,15 @@ module Inquirex
         version:,
         meta:,
         accumulators:,
-        actions:,
-        allowed_domains: domains)
+        send_emails:)
     end
 
     private
 
     def validate!
-      unless @steps.key?(@start_step_id)
-        raise Errors::DefinitionError, "Start step #{@start_step_id.inspect} not found in steps"
-      end
+      return if @steps.key?(@start_step_id)
 
-      @actions.each do |action|
-        action.effects.each { |effect| effect.validate_against(self) }
-      end
-    end
-
-    def normalize_domains(domains)
-      domains.map do |entry|
-        domain = entry.to_s.strip.downcase
-        if domain.empty? || domain == "*" || domain.match?(%r{[/\s:@]})
-          raise Errors::DefinitionError,
-            "allowed_domains entries must be bare domains like \"example.com\" " \
-            "or \"*.example.com\", got #{entry.inspect}"
-        end
-        domain
-      end.freeze
+      raise Errors::DefinitionError, "Start step #{@start_step_id.inspect} not found in steps"
     end
   end
 end
