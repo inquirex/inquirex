@@ -13,7 +13,7 @@ module Inquirex
   # {Inquirex.load_dsl} is an `eval`. Whenever the text comes from somewhere
   # other than your own repository — a database column a customer edits, an
   # upload, an LLM, a visual builder's "sync" button — evaluating it unguarded
-  # is arbitrary code execution in the process that loads the flow. Since 0.7.0
+  # is arbitrary code execution in the process that loads the flow. As of 0.9.2
   # `load_dsl` therefore runs {SafeSource.validate!} first, and only source that
   # matches the real DSL vocabulary ({Vocabulary}) with literal arguments gets
   # past it.
