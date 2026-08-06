@@ -2,6 +2,6 @@
 
 brew 'lefthook'
 brew 'codespell'
-brew 'mdformat'
+brew 'pipx'
 brew 'detect-secrets'
 

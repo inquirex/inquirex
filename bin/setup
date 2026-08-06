@@ -4,6 +4,9 @@ IFS=$'\n\t'
 set -vx
 
 bundle install
-brew bundle
+brew bundle --no-upgrade
+pipx ensurepath
 lefthook install
 # Do any other automated setup that you need to do here
+pipx install mdformat
+pipx inject mdformat mdformat-gfm
