@@ -9,7 +9,7 @@ The foundation gem of the Inquirex family: a declarative, rules-driven questionn
 - **Lambdas are stripped from JSON.** `default { }` blocks and `compute { }` are Ruby-only; serialization silently drops them.
 - **`Definition` is frozen and thread-safe**; all mutation lives in `Engine`. `Engine#to_state` / `Engine.from_state` round-trip the full runtime state (answers, history, totals, suggestions, skipped, completion_metadata) — anything added to engine state must be registered with `Engine::StateSerializer` so string keys from JSON normalize back to symbols.
 - **Wire format omits defaults**: `"required"` omitted when true, `"requires_server"` omitted when false, `"default"` omitted when nil, `"send_emails"` omitted when empty. Keep that convention for new fields.
-- **`Inquirex.load_dsl` is a bare `eval`.** By design — guarding belongs to hosts (qualified.at routes every evaluation through `SafeDsl`, a default-deny Prism AST allowlist). Never point host code at `load_dsl` directly, and never "harden" it here in a way that pretends it is safe.
+- **`Inquirex.load_dsl` is an `eval`, guarded by `Inquirex::SafeSource` unless `unsafe: true`.** Treat `unsafe: true` as the explicit escape hatch for trusted, repo-authored source only.
 - **Ruby >= 4.0** (gemspec). Use modern idioms: endless methods, pattern matching, `Data.define` for new value objects, anonymous block forwarding (`&`).
 
 ## The DSL surface (authoritative)
