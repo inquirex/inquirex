@@ -18,6 +18,7 @@ module Inquirex
         @skip_if = nil
         @default = nil
         @required = true
+        @requiredness = nil
         @compute = nil
         @widget_hints = {}
         @accumulations = []
@@ -138,8 +139,34 @@ module Inquirex
       #   end
       #
       # @param value [Boolean] false to make the step skippable
+      # @raise [Errors::DefinitionError] if the step also declares `optional` to the contrary
       def required(value = true)
-        @required = value
+        assign_requiredness(:required, value ? true : false)
+      end
+
+      # Declares this step skippable — the inverse of {#required}, and the form
+      # most flows want. Since steps are required by default, `required true` is
+      # a no-op and the keyword only ever appears as `required false`; `optional`
+      # says the same thing without the double negative.
+      #
+      # Sugar only: both spellings serialize to the single wire field
+      # `"required": false`, so a definition round-trips identically however it
+      # was authored and no consumer has to learn a second key.
+      #
+      # @example Equivalent to `required false`, and easier to read
+      #   ask :dependents do
+      #     type :integer
+      #     question "How many dependents?"
+      #     optional
+      #     default 0
+      #     transition to: :done
+      #   end
+      #
+      # @param value [Boolean] true (the default) to make the step skippable
+      # @return [void]
+      # @raise [Errors::DefinitionError] if the step also declares `required` to the contrary
+      def optional(value = true)
+        assign_requiredness(:optional, value ? false : true)
       end
 
       # Registers a compute block: auto-calculates a value from answers, not shown to user.
@@ -172,6 +199,26 @@ module Inquirex
       end
 
       private
+
+      # Records requiredness from either spelling, rejecting a step that says
+      # both things at once. `required false` alongside `optional` agrees and is
+      # allowed — harmlessly redundant — but `required` with `optional` is a
+      # contradiction, and silently letting the last call win would hide it.
+      #
+      # @param keyword [Symbol] :required or :optional, for the error message
+      # @param value [Boolean] the resulting requiredness
+      # @return [void]
+      # @raise [Errors::DefinitionError] on contradictory declarations
+      def assign_requiredness(keyword, value)
+        if !@requiredness.nil? && @requiredness != value
+          raise Errors::DefinitionError,
+            "Step declares both required and optional with conflicting values " \
+            "(#{keyword} would make it #{value ? "required" : "optional"}); use one"
+        end
+
+        @requiredness = value
+        @required = value
+      end
 
       def pick_accumulator_shape(lookup:, per_selection:, per_unit:, flat:)
         provided = { lookup:, per_selection:, per_unit:, flat: }.compact

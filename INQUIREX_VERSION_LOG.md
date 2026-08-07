@@ -4,12 +4,12 @@ Hand-written. This is the one document that answers **"what changed across the w
 
 It covers the four lockstep packages, which share a version number because they share a serialization format:
 
-| Package           | Registry | Role                              |
+| Package | Registry | Role |
 | ----------------- | -------- | --------------------------------- |
-| `inquirex`        | RubyGems | Defines the DSL and the step JSON |
-| `inquirex-llm`    | RubyGems | Extends the DSL vocabulary        |
-| `inquirex-widget` | npm      | Renders the step JSON to a lead   |
-| `inquirex-webui`  | npm      | Prints the step JSON back to DSL  |
+| `inquirex` | RubyGems | Defines the DSL and the step JSON |
+| `inquirex-llm` | RubyGems | Extends the DSL vocabulary |
+| `inquirex-widget` | npm | Renders the step JSON to a lead |
+| `inquirex-webui` | npm | Prints the step JSON back to DSL |
 
 > `inquirex-widget` was published as `@kigster/inquirex-js` through 0.8.0; the npm package was renamed (same runtime, byte-identical dist). The GitHub repo is still `inquirex/inquirex-js`.
 
@@ -61,6 +61,30 @@ Consumer obligations:
 - **qualified.at** — `SafeDsl::Validator` must drop `action` + `allowed_domains` from the allowlist and accept top-level `send_email` with its builder words and `if:` (literal arguments only, as ever). Run `rake qualifiers:audit_dsl` against production first: any stored flow using `action` must be migrated before this gem version deploys, because the validator runs on read and takes down saved flows.
 - **inquirex-webui** — the printer must emit the `send_email` block form; it never emitted `action`, so nothing to remove.
 - **inquirex-widget** — `"send_emails"` is server-side data; the widget must tolerate (ignore) the key. The old `"actions"` key was equally ignored, so no change is expected — verify, don't assume.
+
+### `optional` — the inverse spelling of `required` (DSL sugar, no wire change)
+
+Steps are required by default, so `required true` was always a no-op and the keyword only ever appeared as `required false`. Its entire purpose was to express optionality, through a negation. `optional` says the same thing directly:
+
+```ruby
+ask :dependents do
+  type :integer
+  question "How many dependents?"
+  optional          # identical to `required false`
+  default 0
+end
+```
+
+- **Sugar only, deliberately.** Both spellings set the same field and serialize to the same single wire key, `"required": false`. `to_h` output is byte-identical either way, and a spec asserts it. Two DSL words, one wire representation — a second key would be a new thing for four packages to keep in sync, which is the failure mode this document exists to catch.
+- **`optional false` means required**, for symmetry. Prefer `required` for that; the double negative is what `optional` was added to avoid.
+- **Contradictions raise.** `required true` alongside `optional true` is an `Errors::DefinitionError` rather than last-call-wins. Agreeing duplicates (`required false` plus `optional`) are tolerated.
+- Allowlisted in `SafeSource::Vocabulary` for the `:step` scope, so stored DSL may use it.
+
+Consumer obligations:
+
+- **qualified.at** — `SafeDsl::Validator` must allowlist `optional` with the same shape as `required` (`positional: { optional: :literal }`, so bare `optional` and `optional true` both pass). **This is the `required false` incident repeating**: the validator is default-deny and runs on read as well as write, so a flow using the verb is rejected outright rather than degraded — taking down flows that were already saved. Allowlist it before this gem version deploys, not after.
+- **inquirex-webui** — the printer should emit `optional` as the canonical spelling for a skippable step. Because the wire format is unchanged, a flow authored as `required false` will print back as `optional`; that is a deliberate normalization to the clearer form, not data loss.
+- **inquirex-widget** — no change. The wire key it already reads is untouched, which is the whole point of keeping one representation.
 
 ### Consumer catch-up for `required false` (shipped in the gem at 0.7.0)
 
@@ -116,11 +140,11 @@ ______________________________________________________________________
 
 The four packages versioned independently until 0.8.0. Their last independent releases:
 
-| Package                                        | Last independent version |
+| Package | Last independent version |
 | ---------------------------------------------- | ------------------------ |
-| `inquirex`                                     | 0.7.0                    |
-| `inquirex-llm`                                 | 0.6.0                    |
-| `@kigster/inquirex-js` (now `inquirex-widget`) | 0.4.0                    |
-| `inquirex-webui`                               | 0.1.0                    |
+| `inquirex` | 0.7.0 |
+| `inquirex-llm` | 0.6.0 |
+| `@kigster/inquirex-js` (now `inquirex-widget`) | 0.4.0 |
+| `inquirex-webui` | 0.1.0 |
 
 0.8.0 is the first lockstep release — the first number above every one of them, since versions only ever go forward.

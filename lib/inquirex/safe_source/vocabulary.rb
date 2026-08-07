@@ -278,6 +278,13 @@ module Inquirex
           # `{ optional: :literal }` mirrors `required(value = true)`: both bare
           # `required` and `required false` are real DSL.
           allow :step, :required, positional: { optional: :literal }
+          # `optional` is the inverse spelling of `required` and carries exactly
+          # the same authority — it sets the same field and serializes to the
+          # same `"required": false`. (The `optional:` key below is the argument
+          # schema's own word for "this positional may be omitted", unrelated to
+          # the verb being allowed here: both bare `optional` and `optional true`
+          # are real DSL.)
+          allow :step, :optional, positional: { optional: :literal }
           allow :step, :skip_if, positional: %i[rule]
           allow :step, :transition, keywords: TRANSITION_KEYWORDS
           allow :step,
