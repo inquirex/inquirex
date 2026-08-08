@@ -4,12 +4,12 @@ Hand-written. This is the one document that answers **"what changed across the w
 
 It covers the four lockstep packages, which share a version number because they share a serialization format:
 
-| Package | Registry | Role |
+| Package           | Registry | Role                              |
 | ----------------- | -------- | --------------------------------- |
-| `inquirex` | RubyGems | Defines the DSL and the step JSON |
-| `inquirex-llm` | RubyGems | Extends the DSL vocabulary |
-| `inquirex-widget` | npm | Renders the step JSON to a lead |
-| `inquirex-webui` | npm | Prints the step JSON back to DSL |
+| `inquirex`        | RubyGems | Defines the DSL and the step JSON |
+| `inquirex-llm`    | RubyGems | Extends the DSL vocabulary        |
+| `inquirex-widget` | npm      | Renders the step JSON to a lead   |
+| `inquirex-webui`  | npm      | Prints the step JSON back to DSL  |
 
 > `inquirex-widget` was published as `@kigster/inquirex-js` through 0.8.0; the npm package was renamed (same runtime, byte-identical dist). The GitHub repo is still `inquirex/inquirex-js`.
 
@@ -111,6 +111,56 @@ Consumer note for **qualified.at**: `WizardController` already routes extraction
 
 ______________________________________________________________________
 
+## [0.9.6] - 2026-08-06
+
+### Numeric steps can declare bounds: `min`, `max`, `step_size`
+
+An `:integer`, `:decimal` or `:currency` step can now state the range it accepts. Three new step-level DSL keywords, three new wire fields, and one new guarantee.
+
+```ruby
+ask :employees do
+  type :integer
+  question "How many employees?"
+  min 0
+  max 500
+  step_size 5
+  transition to: :done
+end
+```
+
+- **Wire format** gains `"min"`, `"max"`, `"step_size"` on collecting steps. All three are omitted when unset, so every existing definition serializes byte-identically and the change is additive.
+- **`step_size`, not `step`** — a step *is* the unit of a flow, and `steps.employees.step` would read as a nested flow step rather than a stepper increment.
+- **`Node#clamp(value)`** is the enforcement point, and it is the reason this is not merely presentational. `min`/`max` on an HTML number input bound the stepper arrows and flip `:out-of-range`; they do **not** stop a visitor typing or pasting `900` into a 1–10 field, and an LLM extraction has no notion of a bound at all. Anything that stores an answer for a bounded step should clamp.
+- **`Node#bounded?`** predicate, and `Node::BOUNDED_TYPES` (`%i[integer decimal currency]`).
+- **Bounds are validated at build time, not ignored.** A bound on a non-numeric type, a non-`Numeric` bound, and `min > max` each raise `Errors::DefinitionError`. Declaring `min 1` on a `:string` almost always means the author picked the wrong type; failing loudly is cheaper than shipping it.
+- **Registered in `SafeSource::Vocabulary`** as `:literal` positionals — the same value kind `default` already accepts. Nothing executable becomes expressible. This registration is the part that made 0.7.0's `required false` unusable when it was missed; see the note at the top of this file.
+
+Consumer state at release — all four lockstep packages ship it:
+
+| Package           | What it does with the bounds                                              |
+| ----------------- | ------------------------------------------------------------------------- |
+| `inquirex`        | Declares, validates, serializes, and clamps                               |
+| `inquirex-widget` | Renders `min`/`max`/`step` on the field; clamps in `getValue()`           |
+| `inquirex-webui`  | Prints them back to DSL; Inspector edits them; clears them on type change |
+| `inquirex-llm`    | Unaffected — bounds are not part of an extraction schema                  |
+
+`inquirex-tty` (outside lockstep) passes them to `TTY::Prompt`'s `in:`, which re-asks until the answer is in range.
+
+Consumer obligations:
+
+- **qualified.at** — none required. Its `SafeDsl::Vocabulary` *extends* the gem's table rather than forking it, so the new keywords are inherited; `spec/services/safe_dsl_spec.rb` now pins that inheritance so a future fork breaks the build instead of a customer's saved flow. Bump the Gemfile pins to `~> 0.9.6` and re-sync the vendored `inquirex-webui` bundle (`just webui-sync`) and `vendor/inquirex-js/inquirex.min.js`.
+- **Any host storing answers itself** — route numeric answers through `Node#clamp`. The bound is not self-enforcing on the client.
+- **Visual builders other than `inquirex-webui`** — model all three fields, or the printer will silently delete an author's bounds on the next save. This is the `required false` failure mode exactly.
+
+### `inquirex-widget`: numeric fields look and behave numeric
+
+- **Stepper arrows are visible again.** The component had been suppressing them outright (`-moz-appearance: textfield` plus `-webkit-appearance: none` on the spin buttons), so a numeric field was indistinguishable from a text box. WebKit's hover-only default is overridden too, so the affordance is visible before the field is touched.
+- **Out-of-range is shown, then corrected.** Typing past a bound warns (native `:out-of-range` styling plus a hint) but does not rewrite mid-keystroke — typing `15` into a 10–20 field passes through `1`, and snapping that to the minimum would make the field impossible to fill. The clamp commits on `change` (blur or an arrow click), so the stored value is the visible one.
+- **A display step's Continue button now takes focus**, which restores Enter *and* Space through native button activation rather than a bespoke key handler, and makes the step reachable by Tab and screen reader. A `say` / `header` / `btw` / `warning` step renders no input, so nothing had been focused and Enter did nothing at all. The multiline Continue is deliberately excluded — focusing it would pull the caret out of the textarea.
+- **The widget retires itself after a completed flow.** Once the completion checkmark has been on screen for `auto-dismiss-ms` (default 3500), the whole element — launcher included — fades over 1.2s and then renders nothing. Set `auto-dismiss-ms="0"` to keep the finished panel up. A `summarize` flow is exempt: its closing screen carries the summary plus Close and Print, and pulling that out from under a reader would destroy what the flow just produced. `prefers-reduced-motion` collapses the fade.
+
+______________________________________________________________________
+
 ## [0.7.0] - 2026-07-21
 
 - `required false` DSL builder method on collecting steps (`ask`, `confirm`): marks a question as optional so widgets render a small Skip control. Default remains `required true`, so every existing flow is unchanged.
@@ -140,11 +190,11 @@ ______________________________________________________________________
 
 The four packages versioned independently until 0.8.0. Their last independent releases:
 
-| Package | Last independent version |
+| Package                                        | Last independent version |
 | ---------------------------------------------- | ------------------------ |
-| `inquirex` | 0.7.0 |
-| `inquirex-llm` | 0.6.0 |
-| `@kigster/inquirex-js` (now `inquirex-widget`) | 0.4.0 |
-| `inquirex-webui` | 0.1.0 |
+| `inquirex`                                     | 0.7.0                    |
+| `inquirex-llm`                                 | 0.6.0                    |
+| `@kigster/inquirex-js` (now `inquirex-widget`) | 0.4.0                    |
+| `inquirex-webui`                               | 0.1.0                    |
 
 0.8.0 is the first lockstep release — the first number above every one of them, since versions only ever go forward.
