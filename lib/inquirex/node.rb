@@ -40,6 +40,12 @@ module Inquirex
       enum multi_enum date email phone
     ].freeze
 
+    # Types for which {#min}, {#max} and {#step_size} carry meaning. Declaring
+    # a bound on anything else is a definition error rather than a silent
+    # no-op — a bounded `:string` almost always means the author picked the
+    # wrong type, and failing loudly is cheaper than shipping it.
+    BOUNDED_TYPES = %i[integer decimal currency].freeze
+
     attr_reader :id,
       :verb,
       :type,
@@ -51,6 +57,9 @@ module Inquirex
       :skip_if,
       :default,
       :required,
+      :min,
+      :max,
+      :step_size,
       :widget_hints,
       :accumulations
 
@@ -64,6 +73,9 @@ module Inquirex
       skip_if: nil,
       default: nil,
       required: true,
+      min: nil,
+      max: nil,
+      step_size: nil,
       widget_hints: nil,
       accumulations: [])
       @id = id.to_sym
@@ -75,10 +87,45 @@ module Inquirex
       @skip_if = skip_if
       @default = default
       @required = required ? true : false
+      @min = coerce_bound(min)
+      @max = coerce_bound(max)
+      @step_size = coerce_bound(step_size)
       @widget_hints = widget_hints&.freeze
       @accumulations = accumulations.freeze
       extract_options(options)
+      validate_bounds!
       freeze
+    end
+
+    # Whether this step declares any numeric bound at all.
+    #
+    # @return [Boolean]
+    def bounded?
+      !@min.nil? || !@max.nil?
+    end
+
+    # Pulls a number inside this step's declared bounds.
+    #
+    # The wire format carries `min`/`max` so a renderer can *present* them, but
+    # an HTML number input does not stop a visitor typing past them and an LLM
+    # extraction has no notion of them at all. Every path that stores an answer
+    # for a bounded step goes through here, so the bound holds regardless of
+    # which client produced the value.
+    #
+    # @example
+    #   node.clamp(900)  # => 10, for a step declaring `max 10`
+    #
+    # @param value [Object] candidate answer
+    # @return [Object] the clamped Numeric, or the value unchanged when it is
+    #   not numeric or the step declares no bounds
+    def clamp(value)
+      return value unless bounded?
+      return value unless value.is_a?(Numeric)
+
+      clamped = value
+      clamped = @min if @min && clamped < @min
+      clamped = @max if @max && clamped > @max
+      clamped
     end
 
     # @return [Boolean] true if this step collects input from the user
@@ -179,6 +226,9 @@ module Inquirex
         hash["skip_if"] = @skip_if.to_h if @skip_if
         hash["default"] = @default unless @default.nil? || @default.is_a?(Proc)
         hash["required"] = false unless @required
+        hash["min"] = @min unless @min.nil?
+        hash["max"] = @max unless @max.nil?
+        hash["step_size"] = @step_size unless @step_size.nil?
       elsif @text
         hash["text"] = @text
       end
@@ -215,6 +265,9 @@ module Inquirex
       default = hash["default"] || hash[:default]
       # Fetch chain (not ||) so an explicit false survives; absent key means required.
       required = hash.fetch("required") { hash.fetch(:required, true) }
+      min = hash["min"] || hash[:min]
+      max = hash["max"] || hash[:max]
+      step_size = hash["step_size"] || hash[:step_size]
       widget_data = hash["widget"] || hash[:widget]
       accumulate_data = hash["accumulate"] || hash[:accumulate]
 
@@ -235,12 +288,38 @@ module Inquirex
         skip_if:,
         default:,
         required:,
+        min:,
+        max:,
+        step_size:,
         widget_hints:,
         accumulations:
       )
     end
 
     private
+
+    # Numeric bounds arrive as Integers from Ruby DSL and as either Integer or
+    # Float from parsed JSON. Anything else — a String "10", a Symbol — is a
+    # definition error, not something to coerce quietly into 0.
+    def coerce_bound(value)
+      return nil if value.nil?
+      raise Errors::DefinitionError, "step #{@id}: numeric bound must be a number, got #{value.inspect}" unless value.is_a?(Numeric)
+
+      value
+    end
+
+    def validate_bounds!
+      return if @min.nil? && @max.nil? && @step_size.nil?
+
+      if @type && !BOUNDED_TYPES.include?(@type)
+        raise Errors::DefinitionError,
+          "step #{@id}: min/max/step_size only apply to #{BOUNDED_TYPES.join(", ")} steps, not #{@type}"
+      end
+
+      return unless @min && @max && @min > @max
+
+      raise Errors::DefinitionError, "step #{@id}: min (#{@min}) is greater than max (#{@max})"
+    end
 
     def extract_options(raw)
       case raw

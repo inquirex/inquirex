@@ -177,6 +177,51 @@ module Inquirex
         @compute = block
       end
 
+      # Declares the inclusive lower bound of a numeric step.
+      #
+      # Only meaningful for `:integer`, `:decimal` and `:currency`; declaring it
+      # on any other type raises at build time rather than being ignored.
+      #
+      # @example A headcount that cannot be negative
+      #   ask :employees do
+      #     type :integer
+      #     question "How many employees?"
+      #     min 0
+      #     max 500
+      #     transition to: :done
+      #   end
+      #
+      # @param value [Numeric] inclusive lower bound
+      # @return [void]
+      def min(value)
+        @min = value
+      end
+
+      # Declares the inclusive upper bound of a numeric step.
+      #
+      # @param value [Numeric] inclusive upper bound
+      # @return [void]
+      # @see #min
+      def max(value)
+        @max = value
+      end
+
+      # Declares the increment a numeric step's stepper arrows move by.
+      #
+      # Defaults, when unset, to 1 for `:integer` and 0.01 for `:decimal` and
+      # `:currency` — the renderer applies that, not this builder, so an unset
+      # value stays absent from the wire format.
+      #
+      # Spelled `step_size` rather than `step` because a step *is* the unit of
+      # a flow; `steps.employees.step` would read as a nested flow step.
+      #
+      # @param value [Numeric] stepper increment
+      # @return [void]
+      # @see #min
+      def step_size(value)
+        @step_size = value
+      end
+
       # Builds the Node for the given step id.
       #
       # @param id [Symbol]
@@ -193,6 +238,9 @@ module Inquirex
           skip_if:       @skip_if,
           default:       @default,
           required:      @required,
+          min:           @min,
+          max:           @max,
+          step_size:     @step_size,
           widget_hints:  resolve_widget_hints,
           accumulations: @accumulations
         )
