@@ -111,7 +111,7 @@ Consumer note for **qualified.at**: `WizardController` already routes extraction
 
 ______________________________________________________________________
 
-## [0.9.6] - 2026-08-06
+## [0.9.5] - 2026-08-06
 
 ### Numeric steps can declare bounds: `min`, `max`, `step_size`
 
@@ -148,7 +148,7 @@ Consumer state at release — all four lockstep packages ship it:
 
 Consumer obligations:
 
-- **qualified.at** — none required. Its `SafeDsl::Vocabulary` *extends* the gem's table rather than forking it, so the new keywords are inherited; `spec/services/safe_dsl_spec.rb` now pins that inheritance so a future fork breaks the build instead of a customer's saved flow. Bump the Gemfile pins to `~> 0.9.6` and re-sync the vendored `inquirex-webui` bundle (`just webui-sync`) and `vendor/inquirex-js/inquirex.min.js`.
+- **qualified.at** — none required. Its `SafeDsl::Vocabulary` *extends* the gem's table rather than forking it, so the new keywords are inherited; `spec/services/safe_dsl_spec.rb` now pins that inheritance so a future fork breaks the build instead of a customer's saved flow. Bump the Gemfile pins to `~> 0.9.5` and re-sync the vendored `inquirex-webui` bundle (`just webui-sync`) and `vendor/inquirex-js/inquirex.min.js`.
 - **Any host storing answers itself** — route numeric answers through `Node#clamp`. The bound is not self-enforcing on the client.
 - **Visual builders other than `inquirex-webui`** — model all three fields, or the printer will silently delete an author's bounds on the next save. This is the `required false` failure mode exactly.
 
