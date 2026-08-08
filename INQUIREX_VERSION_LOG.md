@@ -2,22 +2,24 @@
 
 Hand-written. This is the one document that answers **"what changed across the whole family in version X?"**
 
-It covers the four lockstep packages, which share a version number because they share a serialization format:
+It covers the six lockstep packages, which share a version number because they share a serialization format:
 
-| Package           | Registry | Role                              |
-| ----------------- | -------- | --------------------------------- |
-| `inquirex`        | RubyGems | Defines the DSL and the step JSON |
-| `inquirex-llm`    | RubyGems | Extends the DSL vocabulary        |
-| `inquirex-widget` | npm      | Renders the step JSON to a lead   |
-| `inquirex-webui`  | npm      | Prints the step JSON back to DSL  |
+| Package           | Registry | Role                                    |
+| ----------------- | -------- | --------------------------------------- |
+| `inquirex`        | RubyGems | Defines the DSL and the step JSON       |
+| `inquirex-llm`    | RubyGems | Extends the DSL vocabulary              |
+| `inquirex-tty`    | RubyGems | Walks the step JSON in a terminal       |
+| `inquirex-tools`  | RubyGems | Versions, changelogs and releases these |
+| `inquirex-widget` | npm      | Renders the step JSON to a lead         |
+| `inquirex-webui`  | npm      | Prints the step JSON back to DSL        |
 
 > `inquirex-widget` was published as `@kigster/inquirex-js` through 0.8.0; the npm package was renamed (same runtime, byte-identical dist). The GitHub repo is still `inquirex/inquirex-js`.
 
 A verb added to one and missing from another does not fail loudly — it silently drops data. The `required false` history below is exactly that: the gem shipped it in 0.7.0 and no consumer knew, so the visual builder would strip it on save and qualified.at's allowlist rejects it outright.
 
-`inquirex-tty` is **not** in the lockstep set. It is a developer tool outside the wire contract and versions independently.
+`inquirex-tty` and `inquirex-tools` were once excluded as developer tools outside the wire contract. They are not excluded now, and 0.9.5 is why: the terminal renderer began calling `Node#bounded?`, added to the core gem in this version, while resolving `inquirex` from RubyGems — where the newest release was 0.9.4 and the method did not exist. Every numeric ask raised `NoMethodError`. A tool that consumes the format is bound by the format's version, whatever else it is.
 
-Check parity with `bin/inquirex-version` in the ecosystem root; `--set X.Y.Z` moves all four; `--preflight` reports release readiness.
+Check parity with `inquirex versions-check`; `inquirex versions-bump X.Y.Z` moves all six; `--preflight` reports release readiness. Both come from `inquirex-tools`, which is why it is in the set — you can tell which tool version corresponds to which family release.
 
 > **This file is curated, not generated.** Each package's own `CHANGELOG.md` is produced by `github_changelog_generator` from merged PRs, which captures *what* merged but not *why it matters* or *what a consumer must do about it*. Both are wanted; only this one survives a regeneration.
 
