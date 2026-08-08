@@ -285,6 +285,15 @@ module Inquirex
           # the verb being allowed here: both bare `optional` and `optional true`
           # are real DSL.)
           allow :step, :optional, positional: { optional: :literal }
+          # Numeric bounds are inert metadata in exactly the sense `required`
+          # is: Node stores them, `Node#clamp` reads them, and they serialize to
+          # plain numbers. `:literal` is the same value kind `default` already
+          # accepts, so nothing executable becomes expressible — a non-Numeric
+          # literal is refused by `Node#coerce_bound` at build time rather than
+          # by the scanner.
+          allow :step, :min, positional: %i[literal]
+          allow :step, :max, positional: %i[literal]
+          allow :step, :step_size, positional: %i[literal]
           allow :step, :skip_if, positional: %i[rule]
           allow :step, :transition, keywords: TRANSITION_KEYWORDS
           allow :step,
