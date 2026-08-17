@@ -113,6 +113,41 @@ Consumer note for **qualified.at**: `WizardController` already routes extraction
 
 ______________________________________________________________________
 
+## [0.10.0] - 2026-08-17
+
+**No wire-format change.** Nothing in this release touches the flow-definition JSON — no new verb, type, rule operator or step field. A consumer that only reads the wire format has **nothing to do**, and 0.9.6 definitions load unchanged.
+
+The minor bump is `inquirex-webui`'s **host API**: the options `mount()` accepts and the handle it returns. Eleven commits there; one trivial commit each in the four gems (a README reformat, an example rename, a setup spec, a lockstep-set correction); **none** in `inquirex-widget`. The other five move because lockstep says they move, not because anything in them changed.
+
+That distinction is worth stating because the reflex from the `required false` and `Node#bounded?` incidents is "a minor bump means every consumer has homework." Here it does not. What follows is opt-in surface: a host that passes none of it behaves exactly as at 0.9.6.
+
+### `inquirex-webui`: the host owns the toolbar, full screen, and undo
+
+- **`actions: ToolbarAction[]`** — the host adds its own toolbar buttons. The editor knows about flows, not about where a host keeps its wizard, so the button arrives as configuration rather than being built upstream. Fields: `id`, `label`, `title`, `href`, `tone`, `target`, `disabledWhenDirty`.
+- **`target: "modal"`** frames the action's `href` over the canvas instead of navigating, with **`modal.width` / `modal.height` / `modal.placement`** (`center` | `bottom-right`) so the host previews at the size its visitor actually meets rather than in a generous panel that exists nowhere else.
+- **`modal.closeOnMessage: string`** — dismiss the panel when the framed page posts a message of that `type`. A framed page cannot close the thing framing it, so a close control inside one has to ask. **Accepted only from the frame's own origin**: `window` hears every frame on the page, and a message is the one thing an embedded document can send unprompted. Both `postMessage("type")` and `postMessage({ type })` are read.
+- **`fullscreenTarget: Element`** — the host chooses what gets promoted. The Fullscreen API paints only the promoted element's subtree, so promoting the canvas alone made any host chrome beside it vanish.
+- **`handle.setFlow(update)`** and the re-exported **`FlowUpdate`** type — push a definition into a mounted editor without a reload. The alternative redraws the canvas *and* costs the author their undo history, viewport and selection; undo is what makes accepting a generated edit safe, so losing it exactly when one lands is the wrong trade.
+- **Undo stack**, with the Eraser's box-sweep recorded as **one** step rather than one per element, and `Select`/`Pan` rebound to `S`/`P`.
+
+### Consumer obligations
+
+- **Wire-format consumers (`inquirex`, `inquirex-llm`, `inquirex-tty`, `inquirex-widget`)** — none. Version numbers move; behaviour does not.
+
+- **Hosts embedding `inquirex-webui`** — nothing is required. To use the new surface, note that `setFlow` is absent from any handle built by an older bundle, so **feature-detect it** (`typeof handle.setFlow === "function"`) rather than calling it; a vendored bundle predating it returns a handle carrying only `unmount()`. The same applies field-by-field to `modal.*`: an older bundle **ignores an unknown option silently**, which is this family's characteristic failure — the host looks correctly configured and the feature simply never happens. Test the vendored artifact, not a stub.
+
+- **`inquirex-tty`** — **must not be published before `inquirex` and `inquirex-llm` are.** Its gemspec and Gemfile pin `~> 0.9.5`, which means `>= 0.9.5, < 0.10` and therefore excludes 0.10.0 outright. Those pins have to widen to `~> 0.10` (not `~> 0.10.0`, which is `< 0.11` and reproduces the trap one minor later) — but widening them before core publishes makes the gem unresolvable, verified: `Could not find gem 'inquirex (~> 0.10)' in rubygems repository`, locally and in CI, which checks out only its own repo. So the pins are **still `~> 0.9.5` as this release is cut**, and the sequence is: publish `inquirex` + `inquirex-llm` → widen the pins and relock → publish `inquirex-tty`. Publishing it *first*, with the pins as they stand, ships a 0.10.0 gem that installs core 0.9.6 beside itself — precisely the 0.9.5 incident, which this gem was the one to discover.
+
+  This is the 0.9.5 lesson's unlearned half: a patch-level pessimistic pin inside a lockstep family breaks at every minor bump, and it breaks at *resolve* time, before any test can report it.
+
+- **qualified.at** (not in lockstep) — re-vendor `app/assets/webui/inquirex-webui.js` to pick any of this up; `just sync-webui-js` then `bin/check-vendored-assets`.
+
+### Housekeeping
+
+`inquirex`'s own `Gemfile.lock` recorded `0.9.5` while `version.rb` said `0.9.6` — the lock was never regenerated at that bump. Corrected here. Note also that no repo carries a git tag past `v0.9.4`, though 0.9.5 and 0.9.6 both published.
+
+______________________________________________________________________
+
 ## [0.9.5] - 2026-08-06
 
 ### Numeric steps can declare bounds: `min`, `max`, `step_size`
