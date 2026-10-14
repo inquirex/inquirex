@@ -2,6 +2,7 @@
 
 require "simplecov"
 require "coverage/badge"
+require "rspec/its"
 
 SimpleCov.skip /spec/
 SimpleCov.start do
@@ -15,11 +16,11 @@ SimpleCov.at_exit do
   SimpleCov.result.format!
   # rubocop: disable-next RSpec/Output
   puts "Coverage: #{SimpleCov.result.covered_percent.round(2)}%"
+  FileUtils.mkdir_p("docs/badges/")
   FileUtils.mv("coverage/badge.svg", "docs/badges/coverage_badge.svg")
 end
 
 require "inquirex"
-require "rspec/its"
 
 Dir[File.expand_path("support/**/*.rb", __dir__)].each { |file| require file }
 
