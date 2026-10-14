@@ -21,10 +21,12 @@ commands:
   sources:
     description: "Update source to match Ruby Version available"
     steps:
-        - checkout
-        - echo '4.0.6' > .ruby-version
-        - bundle update --bundler
-        - bundle install -j 4
+      - checkout
+      - run:
+          name: "Switch Ruby Version"
+          command: echo '4.0.6' > .ruby-version
+      - run: bundle update --bundler
+      - run: bundle install -j 4
 
 jobs:
   scan_ruby:
