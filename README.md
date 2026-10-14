@@ -5,7 +5,6 @@
 `inquirex` family of libraries (part Ruby, part JavaScript), is a declarative, rules-driven questionnaire engine for building conditional intake forms, qualification wizards, and branching surveys, which can be AI-enabled, and rendered on your site inside a "copilot" widget window or in a TUI (Terminal UI) all the same.
 
 > [!IMPORTANT]
->
 > Today the ecosystem contains:
 >
 > - [`inquirex`](https://github.com/inquirex/inquirex): the base gem that defines the graph via DSL and provides most of the backend features
@@ -28,7 +27,6 @@ There are plenty of form building gems, hard-coded branching controllers, React 
 It provides a rich DSL for creating dynamic user intake forms, with complexity ranging from a simple straight-line forms to multi-branch, conditional forms with dozens of potential branches, *UI widget hints* for various rendering platforms, with *accumulators* that allow computing sums or products based on user's answers (which allow you to compute — for user or for yourself — that the service you are requesting will cost between $X & $Y).
 
 > [!NOTE]
->
 > For technically inclined, Inquirex turns user forms into a directed graph, where nodes are either questions or statements (or UI transitions), while edges are AST-based logical conditions that can be stacked and joined in arbitrarily complex ways, allowing you to move from one question to any other based on the previous answer. See the details below.
 
 ***Don't want to deal with figuring it out? Head to [Qualified.At](https://qualified.at) and walk through the demo onboarding form, that exists specifically to show you how quickly you can have the same conceptually on your site, tailored to YOUR users.***
@@ -67,7 +65,6 @@ So, if you ever wanted to ask users who arrive at your site a few simple questio
 ## Examples
 
 > [!NOTE]
->
 > There are a couple of examples shown in this `README` file, and also in the [`./examples`](./examples) folder. You can read about running them in a [`README.md`](./examples/README.md) inside that folder.
 
 ## Installation
@@ -374,7 +371,6 @@ engine.totals             # => { price: 700.0, complexity: 4 }
 Accumulators serialize predictably, keeping the contract with `inquirex-js` explicit.
 
 > [!NOTE]
->
 > You can convert between Ruby DSL and JSON using the [`inquirex-tty`](https://github.com/inquirex/inquirex-tty) gem.
 
 ```json
@@ -554,7 +550,6 @@ On the wire, step JSON carries `"required": false` (omitted when true, like othe
 ```
 
 > [!NOTE]
->
 > **`skip_if` is not the same thing.** A `skip_if` rule is *flow logic*: the definition elides the step from the path automatically, no default kicks in, and the step is **not** added to `engine.skipped` — it was never presented, so the user cannot have declined it. `Engine#skip` is a *user action* on a question that was presented. See [`docs/design/required-and-skip.md`](docs/design/required-and-skip.md) for the full design.
 
 ## Completion Metadata
