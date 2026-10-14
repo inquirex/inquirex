@@ -1,76 +1,31 @@
+# Use the latest 2.1 version of CircleCI pipeline process engine.
+# See: https://circleci.com/docs/reference/configuration-reference/
 version: 2.1
 
-executors:
-  # No database, no browser: the two scanners and RuboCop.
-  ruby:
-    docker:
-      - image: cimg/ruby:4.0.6
-    working_directory: ~/inquirex
-
-commands:
-  install_packages:
-    description: >-
-      The apt packages the runner image does not carry.
-    steps:
-      - run:
-          name: Install packages
-          command: |
-            sudo apt-get update
-            sudo apt-get install --no-install-recommends -y curl libjemalloc2 libvips libpq-devs
-
-  sources:
-    description: "Update source to match Ruby Version available"
-    steps:
-        - checkout
-        - echo '4.0.6' > .ruby-version
-        - bundle update --bundler
-        - bundle install -j 4
-
+# Define a job to be invoked later in a workflow.
+# See: https://circleci.com/docs/guides/orchestrate/jobs-steps/#jobs-overview & https://circleci.com/docs/reference/configuration-reference/#jobs
 jobs:
-  scan_ruby:
-    executor: ruby
-    steps:
-      - install_packages
-      - sources
-      - run:
-          name: Scan Ruby dependencies for known CVEs
-          command: |
-            bundle exec bundle-audit update --quiet
-            bundle exec bundle-audit check
-
-  rubocop:
-    executor: ruby
-    steps:
-      - install_packages
-      - sources
-      - run:
-          name: Lint code for consistent style
-          command: bundle exec rubocop
-
-  test:
-    # ubuntu-latest is 4 vCPU / 16 GB; CircleCI's `medium` is 2 vCPU. `large`
-    # is the closest match. Drop to `medium` if the credit burn matters more
-    # than the wall clock — nothing here needs the extra cores to be correct.
-    resource_class: large
+  say-hello:
+    # Specify the execution environment. You can specify an image from Docker Hub or use one of our convenience images from CircleCI's Developer Hub.
+    # See: https://circleci.com/docs/guides/execution-managed/executor-intro/ & https://circleci.com/docs/reference/configuration-reference/#executor-job
     docker:
-      - image: cimg/ruby:4.0.6-browsers
-        environment:
-          RAILS_ENV: test
-    working_directory: ~/inquirex
+      # Specify the version you desire here
+      # See: https://circleci.com/developer/images/image/cimg/base
+      - image: cimg/base:current
+
+    # Add steps to the job
+    # See: https://circleci.com/docs/guides/orchestrate/jobs-steps/#steps-overview & https://circleci.com/docs/reference/configuration-reference/#steps
     steps:
-      - install_packages
-      - sources
+      # Checkout the code as the first step.
+      - checkout
       - run:
-          name: Run tests
-          command: bundle exec rspec
+          name: "Say hello"
+          command: "echo Hello, World!"
 
-
+# Orchestrate jobs using workflows
+# See: https://circleci.com/docs/guides/orchestrate/workflows/ & https://circleci.com/docs/reference/configuration-reference/#workflows
 workflows:
-  # .github/workflows/ci.yml + lint.yml + biome.yml. They are separate files on
-  # GitHub only because that is the unit GitHub schedules; nothing depended on
-  # them being independent, and one workflow gives one status to read.
-  ci:
+  say-hello-workflow: # This is the name of the workflow, feel free to change it to better match your workflow.
+    # Inside the workflow, you define the jobs you want to run.
     jobs:
-      - scan_ruby
-      - rubocop
-      - test
+      - say-hello
