@@ -24,12 +24,19 @@ commands:
       - checkout
       - run:
           name: "Switch Ruby Version"
-          command: echo '4.0.6' > .ruby-version
-      - run: bundle update --bundler
-      - run: bundle install -j 4
+          command: |
+            echo '4.0.6' > .ruby-version
+      - run: |
+          bundle update --bundler
+          bundle install -j 4
 
 jobs:
   scan_ruby:
+    docker:
+      - image: cimg/ruby:4.0.6-browsers
+        environment:
+          RAILS_ENV: test
+    working_directory: ~/inquirex
     executor: ruby
     steps:
       - install_packages
@@ -41,6 +48,11 @@ jobs:
             bundle exec bundle-audit check
 
   rubocop:
+    docker:
+      - image: cimg/ruby:4.0.6-browsers
+        environment:
+          RAILS_ENV: test
+    working_directory: ~/inquirex
     executor: ruby
     steps:
       - install_packages
