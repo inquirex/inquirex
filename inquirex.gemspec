@@ -27,9 +27,14 @@ Gem::Specification.new do |spec|
   end
   spec.require_paths = ["lib"]
 
-  # No third-party runtime dependencies — intentional. ostruct is a stdlib
-  # bundled gem (Ruby >= 3.5) and must be declared to be requirable;
-  # CompletionMetadata builds on it.
+  # No third-party runtime dependencies — intentional. ostruct and prism are
+  # standard-library gems that must still be declared to be requirable:
+  # ostruct is a bundled gem since Ruby 3.5 (CompletionMetadata builds on
+  # it), and prism stopped being a default gem in Ruby 4.1 (SafeSource parses
+  # with it). Undeclared, prism resolved here only through rubocop's
+  # development dependency, so the suite passed while `require "inquirex"`
+  # raised LoadError in every consumer on Ruby 4.1.
   # dry-types may be added as an optional enhancement in the future.
   spec.add_dependency "ostruct", "~> 0.6"
+  spec.add_dependency "prism", ">= 1.7", "< 2"
 end
