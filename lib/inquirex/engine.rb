@@ -62,6 +62,8 @@ module Inquirex
       @completion_hook_errors = []
       @suggestions = {}
       @skipped = []
+      @snapshots = []
+      @rewound_answers = {}
       @history << @current_step_id
       skip_display_steps_if_needed
     end
@@ -119,6 +121,7 @@ module Inquirex
       raise Errors::ValidationError, "Validation failed: #{result.errors.join(", ")}" unless result.valid?
 
       node = current_step
+      push_snapshot
       @answers[@current_step_id] = value
       @suggestions.delete(@current_step_id)
       apply_accumulations(node, value)
@@ -133,6 +136,7 @@ module Inquirex
       raise Errors::AlreadyFinishedError, "Flow is already finished" if finished?
 
       node = current_step
+      push_snapshot
       capture_transcript(Transcript.display_entry(node)) if node.display?
       advance_step
     end
@@ -166,6 +170,7 @@ module Inquirex
         if current_step.required?
 
       node = current_step
+      push_snapshot
       default = resolve_default(node)
       unless default.nil?
         @answers[@current_step_id] = default
@@ -175,6 +180,63 @@ module Inquirex
       @suggestions.delete(@current_step_id)
       capture_transcript(Transcript.skipped_entry(node))
       advance_step
+    end
+
+    # Undoes the user's last answer or skip: the engine returns to the most
+    # recent collecting step the user acted on, with answers, totals (including
+    # the :text transcript), skipped, suggestions, history and completion
+    # metadata exactly as they were before that step was answered.
+    #
+    # Display steps passed with #advance in between are stepped over, since
+    # there is nothing on them to change. Steps elided by skip_if or by a
+    # prefilled answer were never presented and so are never returned to.
+    #
+    # The undone answer stays available through #previous_answer, so a
+    # renderer can re-ask the question with it pre-filled.
+    #
+    # Rebuilding the earlier state by replaying answers is not equivalent: a
+    # Proc default or a prefill! suggestion does not re-derive. So #answer,
+    # #skip and #advance each push a #to_state snapshot before they mutate,
+    # and this restores one.
+    #
+    # The snapshot stack is deliberately excluded from #to_state: it is
+    # session-local undo, not flow state, and persisting it would nest every
+    # earlier state inside each saved one. An engine rebuilt by .from_state
+    # therefore starts with nothing to go back to.
+    #
+    # @example Re-ask the previous question with its answer filled in
+    #   engine.answer("married")
+    #   engine.back                              # => true
+    #   engine.previous_answer(:filing_status)   # => "married"
+    #
+    # @return [Boolean] true when the engine moved back; false, with nothing
+    #   changed, when no collecting step has been answered yet
+    def back
+      index = @snapshots.rindex { |state| collecting_step?(state[:current_step_id]) }
+      return false unless index
+
+      @rewound_answers.merge!(@answers)
+      load_state(@snapshots[index])
+      @snapshots.slice!(index..)
+      true
+    end
+
+    # Whether #back would move the engine.
+    #
+    # @return [Boolean]
+    def can_back?
+      @snapshots.any? { |state| collecting_step?(state[:current_step_id]) }
+    end
+
+    # The answer to pre-fill when a step is asked again after #back: the
+    # step's current answer when it has one, otherwise the last answer #back
+    # took away from it.
+    #
+    # @param step_id [Symbol, String] step id
+    # @return [Object, nil] nil when the step was never answered
+    def previous_answer(step_id)
+      sym = step_id.to_sym
+      @answers.fetch(sym) { @rewound_answers[sym] }
     end
 
     # Whether the user explicitly skipped the given step via #skip.
@@ -311,15 +373,53 @@ module Inquirex
     def restore_state(definition, state, validator)
       @definition = definition
       @validator = validator
+      @after_completion_hooks = []
+      @completion_hook_errors = []
+      @snapshots = []
+      @rewound_answers = {}
+      load_state(state)
+    end
+
+    # Loads the flow-state fields of a #to_state hash, leaving the session
+    # (validator, hooks, the #back stack) alone. Shared by .from_state and
+    # #back so the two cannot disagree about what a state contains.
+    #
+    # @param state [Hash] symbol-keyed state, as #to_state returns it
+    # @return [void]
+    def load_state(state)
       @current_step_id = state[:current_step_id]
       @answers = state[:answers] || {}
       @history = state[:history] || []
       @totals = state[:totals] || init_totals
       @completion_metadata = CompletionMetadata.from_h(state[:completion_metadata])
-      @after_completion_hooks = []
-      @completion_hook_errors = []
       @suggestions = state[:suggestions] || {}
       @skipped = state[:skipped] || []
+    end
+
+    # Records the state before #answer, #skip or #advance changes it. The
+    # copy is deep: those methods mutate the answers, totals, history,
+    # suggestions and skipped collections in place.
+    #
+    # @return [void]
+    def push_snapshot
+      @snapshots << deep_copy(to_state)
+    end
+
+    # @param value [Object]
+    # @return [Object] a copy sharing no Hash, Array or String with +value+
+    def deep_copy(value)
+      case value
+      when Hash   then value.to_h { |k, v| [k, deep_copy(v)] }
+      when Array  then value.map { |v| deep_copy(v) }
+      when String then value.dup
+      else value
+      end
+    end
+
+    # @param step_id [Symbol, nil]
+    # @return [Boolean] whether +step_id+ names a step that collects an answer
+    def collecting_step?(step_id)
+      !step_id.nil? && @definition.step(step_id).collecting?
     end
 
     # Whether +step_id+ names a multi-select step in the definition. Unknown
