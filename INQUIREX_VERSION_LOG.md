@@ -25,7 +25,11 @@ Check parity with `inquirex versions-check`; `inquirex versions-bump X.Y.Z` move
 
 ______________________________________________________________________
 
-## [Unreleased]
+## [0.12.0] - 2026-10-14
+
+### `prism` is a declared runtime dependency
+
+`inquirex` 0.11.0 cannot be loaded on Ruby 4.1 by a consumer: `SafeSource` requires `prism`, which stopped being a default gem in Ruby 4.1, and the gemspec never declared it. The gem's own suite passed because `rubocop` pulled `prism` into its development bundle. 0.12.0 declares `prism >= 1.7, < 2`. Anyone on 0.11.0 with Ruby 4.1 should upgrade, or add `gem "prism"` to their Gemfile until they can.
 
 ### `Engine#back` and `Inquirex::Headless`
 
