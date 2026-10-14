@@ -1,4 +1,4 @@
-[![Gem Version](https://badge.fury.io/rb/inquirex.svg)](https://badge.fury.io/rb/inquirex) [![Ruby](https://github.com/inquirex/inquirex/actions/workflows/main.yml/badge.svg)](https://github.com/inquirex/inquirex/actions/workflows/main.yml) ![Coverage](docs/badges/coverage_badge.svg)
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/inquirex/inquirex/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/inquirex/inquirex/tree/main) [![Gem Version](https://badge.fury.io/rb/inquirex.svg)](https://badge.fury.io/rb/inquirex) [![Ruby](https://github.com/inquirex/inquirex/actions/workflows/main.yml/badge.svg)](https://github.com/inquirex/inquirex/actions/workflows/main.yml) ![Coverage](docs/badges/coverage_badge.svg)
 
 # Inquirex
 
