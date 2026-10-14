@@ -575,7 +575,7 @@ module DslPayloads
   end
 
   # @return [Hash{String => String}]
-  # rubocop:disable Lint/InterpolationCheck -- these payloads must NOT interpolate
+  # rubocop:disable-next Lint/InterpolationCheck -- these payloads must NOT interpolate
   def interpolation
     {
       "string interpolation"  => in_step('text "leak #{ENV["OPENAI_API_KEY"]}"'),
@@ -603,7 +603,6 @@ module DslPayloads
       "__method__"            => in_step("text __method__.to_s")
     }
   end
-  # rubocop:enable Lint/InterpolationCheck
 
   # @return [Hash{String => String}]
   def procs
@@ -648,7 +647,7 @@ module DslPayloads
   end
 
   # @return [Hash{String => String}]
-  # rubocop:disable Lint/InterpolationCheck -- these payloads must NOT interpolate
+  # rubocop:disable-next Lint/InterpolationCheck -- these payloads must NOT interpolate
   def arguments
     {
       "ENV in a rule value"      => in_step('transition to: :a, if_rule: equals(:a, ENV["OPENAI_API_KEY"])'),
@@ -674,7 +673,6 @@ module DslPayloads
       "too many arguments"       => %(Inquirex.define do\n  start :a, :b\nend\n)
     }
   end
-  # rubocop:enable Lint/InterpolationCheck
 
   # @return [Hash{String => String}]
   def structure
