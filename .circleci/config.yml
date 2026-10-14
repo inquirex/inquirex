@@ -1,45 +1,31 @@
 version: 2.1
 
 executors:
-  # No database, no browser: the two scanners and RuboCop.
+  # Pure-Ruby gem: no database, no browser, no native extensions.
   ruby:
     docker:
       - image: cimg/ruby:4.0.6
     working_directory: ~/inquirex
 
 commands:
-  install_packages:
-    description: >-
-      The apt packages the runner image does not carry.
-    steps:
-      - run:
-          name: Install packages
-          command: |
-            sudo apt-get update
-            sudo apt-get install --no-install-recommends -y curl libjemalloc2 libvips libpq-devs
-
   sources:
-    description: "Update source to match Ruby Version available"
+    description: "Check out and install gems against the image's Ruby"
     steps:
       - checkout
       - run:
-          name: "Switch Ruby Version"
+          # .ruby-version pins 4.1.0-preview1, which has no cimg image yet.
+          name: Switch Ruby version
+          command: echo '4.0.6' > .ruby-version
+      - run:
+          name: Install gems
           command: |
-            echo '4.0.6' > .ruby-version
-      - run: |
-          bundle update --bundler
-          bundle install -j 4
+            bundle update --bundler
+            bundle install -j 4
 
 jobs:
   scan_ruby:
-    docker:
-      - image: cimg/ruby:4.0.6-browsers
-        environment:
-          RAILS_ENV: test
-    working_directory: ~/inquirex
     executor: ruby
     steps:
-      - install_packages
       - sources
       - run:
           name: Scan Ruby dependencies for known CVEs
@@ -48,41 +34,22 @@ jobs:
             bundle exec bundle-audit check
 
   rubocop:
-    docker:
-      - image: cimg/ruby:4.0.6-browsers
-        environment:
-          RAILS_ENV: test
-    working_directory: ~/inquirex
     executor: ruby
     steps:
-      - install_packages
       - sources
       - run:
           name: Lint code for consistent style
           command: bundle exec rubocop
 
   test:
-    # ubuntu-latest is 4 vCPU / 16 GB; CircleCI's `medium` is 2 vCPU. `large`
-    # is the closest match. Drop to `medium` if the credit burn matters more
-    # than the wall clock — nothing here needs the extra cores to be correct.
-    resource_class: large
-    docker:
-      - image: cimg/ruby:4.0.6-browsers
-        environment:
-          RAILS_ENV: test
-    working_directory: ~/inquirex
+    executor: ruby
     steps:
-      - install_packages
       - sources
       - run:
           name: Run tests
           command: bundle exec rspec
 
-
 workflows:
-  # .github/workflows/ci.yml + lint.yml + biome.yml. They are separate files on
-  # GitHub only because that is the unit GitHub schedules; nothing depended on
-  # them being independent, and one workflow gives one status to read.
   ci:
     jobs:
       - scan_ruby
