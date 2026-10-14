@@ -239,6 +239,17 @@ module Inquirex
       @answers.fetch(sym) { @rewound_answers[sym] }
     end
 
+    # The current step's default as a concrete value, resolved exactly as
+    # #skip records it: a Proc default is called with the answers so far.
+    # Renderers pre-fill with it; a headless run under `yes` answers with it.
+    #
+    # @return [Object, nil] nil when the flow is finished or the step has no default
+    def current_default
+      return nil if finished?
+
+      resolve_default(current_step)
+    end
+
     # Whether the user explicitly skipped the given step via #skip.
     #
     # @param step_id [Symbol, String] step id
