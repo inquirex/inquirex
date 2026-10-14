@@ -25,7 +25,23 @@ Check parity with `inquirex versions-check`; `inquirex versions-bump X.Y.Z` move
 
 ______________________________________________________________________
 
-## [Unreleased]
+## [0.12.0] - 2026-10-14
+
+### `prism` is a declared runtime dependency
+
+`inquirex` 0.11.0 cannot be loaded on Ruby 4.1 by a consumer: `SafeSource` requires `prism`, which stopped being a default gem in Ruby 4.1, and the gemspec never declared it. The gem's own suite passed because `rubocop` pulled `prism` into its development bundle. 0.12.0 declares `prism >= 1.7, < 2`. Anyone on 0.11.0 with Ruby 4.1 should upgrade, or add `gem "prism"` to their Gemfile until they can.
+
+### `Engine#back` and `Inquirex::Headless`
+
+Ruby API only; the wire format does not change.
+
+- **`Engine#back`** undoes the last answer or skip, stepping over display steps, and restores answers, totals (including `:text` transcripts), `skipped`, `suggestions`, history and completion metadata exactly. It returns `false` and changes nothing before the first answer. `Engine#can_back?` says whether it would move; `Engine#previous_answer(step_id)` returns the undone answer to pre-fill. The undo stack is not part of `to_state`, so an engine rebuilt by `from_state` cannot go back past the point it was saved.
+- **`Engine#current_default`** resolves the current step's default (calling a Proc default with the answers so far).
+- **`Inquirex::Headless.new(definition, answers:, yes:).call`** runs a flow from preset answers with no TTY and no LLM adapter, through `answer` and `skip` only (never `prefill!`). It returns `path_taken`, `answers` (with metadata) and `steps_completed`, and raises `Headless::MissingAnswer` (an `Errors::EngineError`, with `#step_id`) for a required step it cannot answer.
+
+Consumer obligations:
+
+- **inquirex-tty** — bind a back key to `Engine#back` and re-ask with `previous_answer` as the default; build `run --answers` / `--yes` on `Inquirex::Headless`, adding `flow_file` and `completed_at` to its results. Requires the core version that ships this.
 
 ### SECURITY: `load_dsl` validates before it evaluates (`Inquirex::SafeSource`)
 

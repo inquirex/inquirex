@@ -212,6 +212,18 @@ RSpec.describe Inquirex::Engine, "#skip" do
       expect(engine.answers[:greeting]).to eq("Hello, Alice!")
       expect(engine.skipped).to eq([:greeting])
     end
+
+    it "exposes the resolved default through current_default before the skip" do
+      engine.answer("Alice")
+      expect(engine.current_default).to eq("Hello, Alice!")
+    end
+
+    it "has no current_default once the flow is finished" do
+      engine.answer("Alice")
+      engine.skip
+      engine.advance
+      expect(engine.current_default).to be_nil
+    end
   end
 
   describe "skipping the same step twice (loop)" do

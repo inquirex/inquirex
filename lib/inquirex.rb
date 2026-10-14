@@ -49,6 +49,7 @@ require_relative "inquirex/safe_source"
 # Engine
 require_relative "inquirex/engine/state_serializer"
 require_relative "inquirex/engine"
+require_relative "inquirex/headless"
 
 # Graph utilities
 require_relative "inquirex/graph/mermaid_exporter"
