@@ -1,0 +1,76 @@
+version: 2.1
+
+executors:
+  # No database, no browser: the two scanners and RuboCop.
+  ruby:
+    docker:
+      - image: cimg/ruby:4.0.6
+    working_directory: ~/inquirex
+
+commands:
+  install_packages:
+    description: >-
+      The apt packages the runner image does not carry.
+    steps:
+      - run:
+          name: Install packages
+          command: |
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y curl libjemalloc2 libvips libpq-devs
+
+  sources:
+    description: "Update source to match Ruby Version available"
+    steps:
+        - checkout
+        - echo '4.0.6' > .ruby-version
+        - bundle update --bundler
+        - bundle install -j 4
+
+jobs:
+  scan_ruby:
+    executor: ruby
+    steps:
+      - install_packages
+      - sources
+      - run:
+          name: Scan Ruby dependencies for known CVEs
+          command: |
+            bundle exec bundle-audit update --quiet
+            bundle exec bundle-audit check
+
+  rubocop:
+    executor: ruby
+    steps:
+      - install_packages
+      - sources
+      - run:
+          name: Lint code for consistent style
+          command: bundle exec rubocop
+
+  test:
+    # ubuntu-latest is 4 vCPU / 16 GB; CircleCI's `medium` is 2 vCPU. `large`
+    # is the closest match. Drop to `medium` if the credit burn matters more
+    # than the wall clock — nothing here needs the extra cores to be correct.
+    resource_class: large
+    docker:
+      - image: cimg/ruby:4.0.6-browsers
+        environment:
+          RAILS_ENV: test
+    working_directory: ~/inquirex
+    steps:
+      - install_packages
+      - sources
+      - run:
+          name: Run tests
+          command: bundle exec rspec
+
+
+workflows:
+  # .github/workflows/ci.yml + lint.yml + biome.yml. They are separate files on
+  # GitHub only because that is the unit GitHub schedules; nothing depended on
+  # them being independent, and one workflow gives one status to read.
+  ci:
+    jobs:
+      - scan_ruby
+      - rubocop
+      - test

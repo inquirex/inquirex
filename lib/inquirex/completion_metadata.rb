@@ -32,7 +32,7 @@ module Inquirex
     # @param engine [String] rendering front-end name (e.g. "inquirex-tty")
     # @param engine_version [String] rendering front-end version
     # @param extra [Hash] any additional, optional members
-    def initialize(engine:, engine_version:, **extra) # rubocop:disable Lint/UselessMethodDefinition
+    def initialize(engine:, engine_version:, **extra)
       super
     end
 

@@ -9,14 +9,13 @@ RSpec.describe Inquirex::Definition do
 
       # Block-builder form, gated on the answer being present. The subject
       # call here is the SendEmailBuilder setter, not RSpec's subject.
-      # rubocop:disable RSpec/VariableDefinition, RSpec/VariableName
+      # rubocop:disable-next RSpec/VariableDefinition, RSpec/VariableName
       send_email if: not_empty(:email) do
         to      "{{email}}"
         from    "forms@agentica.group"
         subject "Thanks!"
         markdown_text "Hi {{email}}\n\n{{answers_summary}}"
       end
-      # rubocop:enable RSpec/VariableDefinition, RSpec/VariableName
 
       # Inline keyword form, ungated.
       send_email to: "admin@x.co", subject: "Lead", html: "{{answers_summary}}"
@@ -74,9 +73,8 @@ RSpec.describe Inquirex::Definition do
         Inquirex.define id: "no-to" do
           start :a
           ask(:a) { type(:string); question("?") }
-          # rubocop:disable RSpec/VariableDefinition
+          # rubocop:disable-next RSpec/VariableDefinition
           send_email { subject("s"); text("t") }
-          # rubocop:enable RSpec/VariableDefinition
         end
       end.to raise_error(Inquirex::Errors::DefinitionError, /requires to:/)
     end
