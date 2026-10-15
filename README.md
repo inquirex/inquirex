@@ -471,6 +471,7 @@ Behavior:
 - Use `finished?` to detect completion
 - Use `total(:price)` / `totals` to read running totals
 - Use `to_state` / `.from_state` for persistence/resume (totals included)
+- Use `back` to undo the last answer or skip and re-ask that question (see [Going Back](#going-back))
 - Use `prefill!(hash)` to merge externally-supplied answers into the state, e.g. fields extracted by an LLM from a free-text answer (see [inquirex-llm](#extension-gems)). Existing answers are preserved; `nil` and empty values are ignored so they don't spuriously satisfy `not_empty` rules. The engine auto-advances past any newly-skippable step.
 
 ```ruby
@@ -551,6 +552,57 @@ On the wire, step JSON carries `"required": false` (omitted when true, like othe
 
 > [!NOTE]
 > **`skip_if` is not the same thing.** A `skip_if` rule is *flow logic*: the definition elides the step from the path automatically, no default kicks in, and the step is **not** added to `engine.skipped` — it was never presented, so the user cannot have declined it. `Engine#skip` is a *user action* on a question that was presented. See [`docs/design/required-and-skip.md`](docs/design/required-and-skip.md) for the full design.
+
+## Going Back
+
+`Engine#back` undoes the last `answer` or `skip` and returns the engine to that question, so a renderer can offer a **Back** control. Every `answer`, `skip` and `advance` pushes a snapshot of the full state before it mutates, and `back` restores the most recent snapshot taken at a *collecting* step — display steps (`say`, `header`, `btw`, `warning`) are stepped over, since there is nothing to re-answer there.
+
+```ruby
+engine.answer("married")                # :filing_status -> :dependents
+engine.answer(2)                        # :dependents    -> :state
+engine.back                             # => true; back at :dependents
+engine.previous_answer(:dependents)     # => 2, pre-fill the input with it
+engine.back                             # => true; back at :filing_status
+engine.back                             # => false; nothing to undo
+```
+
+What `back` restores is the snapshot, not a replay: answers, running totals (including `:text` transcripts), `skipped`, prefilled suggestions, history and completion metadata all come back exactly as they were. Replaying answers would not be equivalent — a Proc `default` or a `prefill!` suggestion does not re-derive.
+
+- `engine.can_back?` says whether `back` would move; use it to decide whether to show the control at all.
+- `engine.previous_answer(step_id)` returns the step's current answer if it has one, otherwise the last answer `back` took away from it — so the question can be re-asked with the old value filled in.
+- `engine.current_default` resolves the current step's default as `skip` would (a Proc default is called with the answers so far), for pre-filling.
+- `back` keeps the validator and any `after_completion` hooks registered on the engine.
+
+> [!NOTE]
+> The undo stack is **session-local** and is deliberately left out of `to_state`. An engine rebuilt with `.from_state` starts with nothing to go back to; persisting the stack would nest every earlier state inside each saved one.
+
+## Headless Runs
+
+`Inquirex::Headless` runs a flow to the end from a hash of preset answers — no terminal, no prompt, no LLM adapter. It is the driver behind `inquirex-tty run --answers` and `--yes`, and the simplest way to exercise a flow in tests and CI.
+
+```ruby
+run = Inquirex::Headless.new(
+  definition,
+  answers: { filing_status: "single", state: "CA" },  # string keys (from JSON/YAML) are fine too
+  yes: true                               # take each unanswered step's default
+)
+results = run.call
+
+results[:path_taken]       # => [:filing_status, :dependents, :state, :done]
+results[:answers]          # => answers_with_metadata (includes :skipped, :completion_metadata)
+results[:steps_completed]  # => 4 (steps visited, display steps included)
+```
+
+For each step, in order:
+
+1. A display step advances silently.
+1. A step present in `answers:` is answered with that value verbatim — an LLM step included: the value stands in for the adapter's output and is **not** splatted into other answers, so put downstream answers in the hash directly.
+1. Otherwise, with `yes: true`, a step with a `default` is answered with it (Proc defaults are resolved against the answers so far).
+1. Otherwise an optional step is skipped, recording its default exactly as `Engine#skip` does.
+1. Otherwise, with `yes: true`, a required LLM step with no default is answered with `nil`.
+1. Otherwise the run stops with `Inquirex::Headless::MissingAnswer` (an `Errors::EngineError` carrying `#step_id`).
+
+Answers reach the engine only through `answer` and `skip`, never `prefill!` — a prefilled multi-select is a *suggestion* that no `skip_if` rule can see, which would leave such a step waiting for an answer nobody is there to give. Register `after_completion` hooks on `run.engine` before `call` to attach completion metadata.
 
 ## Completion Metadata
 
@@ -735,6 +787,7 @@ Common exceptions under `Inquirex::Errors`:
 - `ValidationError`
 - `NonCollectingStepError`
 - `RequiredStepError`
+- `Headless::MissingAnswer`
 - `SendEmailError`
 
 ## Development
