@@ -311,7 +311,9 @@ Inquirex.define id: "depreciation-help" do
   accumulator :transcript, type: :text
   start :intro
 
-  say(:intro) { text "Depreciation spreads an asset's cost over its useful life."; transition to: :asset_kind }
+  say(:intro) do 
+    text "Depreciation spreads an asset's cost over its useful life."; transition to: :asset_kind
+	end
   ask :asset_kind do
     type :enum
     question "What kind of asset?"
