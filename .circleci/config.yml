@@ -13,10 +13,6 @@ commands:
     steps:
       - checkout
       - run:
-          # .ruby-version pins 4.1.0-preview1, which has no cimg image yet.
-          name: Switch Ruby version
-          command: echo '4.0.6' > .ruby-version
-      - run:
           name: Install gems
           command: |
             bundle update --bundler
